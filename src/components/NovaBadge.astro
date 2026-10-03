@@ -1,0 +1,73 @@
+---
+import type { NovaGroup } from '../../pipeline/lib/types.ts';
+import { NOVA } from '../lib/nova.ts';
+
+interface Props {
+  group: NovaGroup;
+  /** "large" for the product verdict, "small" inline in lists */
+  size?: 'large' | 'small';
+}
+
+const { group, size = 'small' } = Astro.props;
+---
+
+<span class:list={['nova-badge', `nova-badge-${group}`, size]} title={`NOVA group ${group}: ${NOVA[group].name}`}>
+  {size === 'large' ? <span class="label">NOVA</span> : <span class="visually-hidden">NOVA group </span>}
+  <span class="num">{group}</span>
+</span>
+
+<style>
+  .nova-badge {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+    border-radius: 2px;
+    flex: none;
+  }
+
+  .nova-badge-1 {
+    background: var(--nova-1);
+    color: var(--nova-1-ink);
+  }
+  .nova-badge-2 {
+    background: var(--nova-2);
+    color: var(--nova-2-ink);
+  }
+  .nova-badge-3 {
+    background: var(--nova-3);
+    color: var(--nova-3-ink);
+  }
+  .nova-badge-4 {
+    background: var(--nova-4);
+    color: var(--nova-4-ink);
+  }
+
+  .num {
+    font-weight: 900;
+    font-stretch: 125%;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .small {
+    width: 1.6rem;
+    height: 1.6rem;
+    font-size: 0.95rem;
+  }
+
+  .large {
+    width: 5.5rem;
+    height: 6.25rem;
+    gap: 0.3rem;
+  }
+  .large .num {
+    font-size: 3.75rem;
+  }
+  .large .label {
+    font-size: 0.8rem;
+    font-weight: 700;
+    font-stretch: 125%;
+    letter-spacing: 0.06em;
+  }
+</style>

@@ -1,0 +1,149 @@
+---
+import type { NovaGroup } from '../../pipeline/lib/types.ts';
+import Base from '../layouts/Base.astro';
+import NovaBadge from '../components/NovaBadge.astro';
+import { href, markerByTag, markerHref } from '../lib/data.ts';
+import { NOVA } from '../lib/nova.ts';
+
+const link = (tag: string, text: string) => {
+  const m = markerByTag.get(tag);
+  return m ? `<a href="${markerHref(m)}">${text}</a>` : text;
+};
+---
+
+<Base
+  title="What is NOVA? The four food processing groups explained"
+  description="NOVA classifies food by how much and why it is processed: unprocessed, culinary ingredients, processed, and ultra-processed. How it works, how ultra-processed foods are identified, and its limits."
+>
+  <article class="prose">
+    <h1>What is NOVA?</h1>
+    <p class="lede">
+      NOVA is a way of classifying food by the extent and purpose of the industrial processing it has been through,
+      rather than by the nutrients it contains. It sorts every food and drink into one of four groups.
+    </p>
+
+    <p>
+      It was developed by researchers at the Center for Epidemiological Studies in Health and Nutrition (NUPENS) at the
+      University of São Paulo, led by Carlos Monteiro, and first published in 2009. "Processing" here means the
+      physical, biological and chemical methods applied to food after it is separated from nature and before it is eaten
+      or cooked. NOVA is the classification behind most research on <em>ultra-processed food</em>, and Brazil's official
+      dietary guidelines are built on it.
+    </p>
+
+    <h2>The four groups</h2>
+    {
+      ([1, 2, 3, 4] as NovaGroup[]).map((g) => (
+        <section class="group">
+          <h3>
+            <NovaBadge group={g} /> Group {g}: {NOVA[g].name}
+          </h3>
+          <p>{NOVA[g].definition}</p>
+          <p class="meta">Examples: {NOVA[g].examples}.</p>
+        </section>
+      ))
+    }
+
+    <h2>How ultra-processed foods are identified</h2>
+    <p>
+      The defining feature of a group 4 product is not that it is made in a factory, but that it is formulated from
+      substances that a home cook would not have. NOVA's authors describe two kinds of tell-tale ingredient, which they
+      call <dfn>markers</dfn> of ultra-processing:
+    </p>
+    <ol>
+      <li>
+        <p>
+          <strong>Substances of no or rare culinary use.</strong> These are extracted from foods or derived from them:
+          sugars such as <Fragment set:html={link('en:fructose', 'fructose')} />, <Fragment set:html={link('en:high-fructose-corn-syrup', 'high-fructose corn syrup')} />,
+          <Fragment set:html={link('en:invert-sugar', 'invert sugar')} />, <Fragment set:html={link('en:maltodextrin', 'maltodextrin')} /> and
+          <Fragment set:html={link('en:dextrose', 'dextrose')} />; modified oils such as hydrogenated or interesterified oils; and protein
+          sources such as hydrolysed proteins, soy protein isolate, <Fragment set:html={link('en:gluten', 'gluten')} />, casein and
+          <Fragment set:html={link('en:whey', 'whey')} /> protein.
+        </p>
+      </li>
+      <li>
+        <p>
+          <strong>"Cosmetic" additives.</strong> These are additives whose job is to make the final product palatable or
+          appealing rather than to preserve it: <Fragment set:html={link('en:flavouring', 'flavourings')} />, flavour enhancers,
+          <Fragment set:html={link('en:colour', 'colours')} />, <Fragment set:html={link('en:emulsifier', 'emulsifiers')} />, sweeteners,
+          thickeners, and anti-foaming, bulking, carbonating, foaming, gelling and glazing agents.
+        </p>
+      </li>
+    </ol>
+    <p>
+      One marker is enough. Plain rolled oats are group 1. Oats baked with sugar and oil into a granola are group 3. Add
+      flavouring or an emulsifier to that granola and it becomes group 4, even though it looks and tastes much the same.
+    </p>
+
+    <h2>How this site gets its NOVA groups</h2>
+    <p>
+      We do not classify products ourselves. Every group on this site comes from
+      <a href="https://world.openfoodfacts.org/nova">Open Food Facts</a>, which computes it automatically from the ingredient
+      list, additives and category that contributors enter. Their implementation turns the NOVA definitions into lists of
+      ingredients, additives and categories, each tagged with the minimum group it implies; a product gets the highest
+      group any of its markers points to. On every product page we show which markers were found and highlight them in
+      the ingredient list.
+    </p>
+
+    <h2>Limits worth knowing</h2>
+    <ul>
+      <li>
+        <p>
+          <strong>It is an estimate from crowdsourced data.</strong> If an ingredient list is incomplete, mistyped or out
+          of date, the group can be wrong. Products whose recipe changed may still show the old one.
+        </p>
+      </li>
+      <li>
+        <p>
+          <strong>Processing is not the same as nutrition.</strong> Table sugar and butter are minimally processed
+          ingredients; some ultra-processed products, such as certain wholegrain breads, have a reasonable nutrient
+          profile. NOVA answers "how and why was this processed?", which is a different question from "is this
+          healthy?".
+        </p>
+      </li>
+      <li>
+        <p>
+          <strong>The research is about patterns, not single products.</strong> Studies linking ultra-processed food to
+          poorer health outcomes look at the share of a whole diet that is group 4. Researchers still debate why
+          that link exists, and how much of it comes from processing itself rather than from the nutrients and eating
+          patterns that come with it.
+        </p>
+      </li>
+      <li>
+        <p>
+          <strong>Group 4 is broad.</strong> A soft drink and a mass-produced wholemeal loaf with an emulsifier are both
+          group 4. That is why each product page lists the specific markers, so you can judge them yourself.
+        </p>
+      </li>
+    </ul>
+
+    <h2>Further reading</h2>
+    <ul>
+      <li>
+        <p>
+          Monteiro CA, Cannon G, Levy RB, et al. "Ultra-processed foods: what they are and how to identify them."
+          <cite>Public Health Nutrition</cite> 22(5), 2019, pages 936 to 941.
+          <a href="https://doi.org/10.1017/S1368980018003762">doi:10.1017/S1368980018003762</a>
+        </p>
+      </li>
+      <li>
+        <p>
+          Open Food Facts, <a href="https://world.openfoodfacts.org/nova">"NOVA groups for food processing"</a>, which
+          explains their implementation.
+        </p>
+      </li>
+    </ul>
+    <p><a href={href()}>Look up a product</a></p>
+  </article>
+</Base>
+
+<style>
+  .group h3 {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+  }
+  dfn {
+    font-style: normal;
+    font-weight: 700;
+  }
+</style>

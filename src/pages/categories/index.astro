@@ -1,0 +1,75 @@
+---
+import type { SiteCategory } from '../../../pipeline/lib/types.ts';
+import Base from '../../layouts/Base.astro';
+import { categories, categoryByTag, categoryHref, href, percent } from '../../lib/data.ts';
+
+// Top-level entries are categories with no parent page; each shows its tree.
+const roots = categories.filter((c) => !c.parent).sort((a, b) => a.name.localeCompare(b.name));
+const kids = (c: SiteCategory) => c.children.map((t) => categoryByTag.get(t)!).sort((a, b) => a.name.localeCompare(b.name));
+---
+
+<Base
+  title="Food categories ranked by processing"
+  description={`Browse ${categories.length} food categories, each with its products ranked from least to most processed using the NOVA classification.`}
+>
+  <h1>Categories</h1>
+  <p class="lede">
+    Each category lists its products from least to most processed, with the share that is ultra-processed (NOVA group
+    4) in brackets.
+  </p>
+
+  <ul class="tree">
+    {
+      roots.map((c) => (
+        <li>
+          <a href={categoryHref(c)}>{c.name}</a> <span class="meta">{c.count} products, {percent(c.novaCounts[4], c.count)}% ultra-processed</span>
+          {c.children.length > 0 && (
+            <ul>
+              {kids(c).map((k) => (
+                <li>
+                  <a href={categoryHref(k)}>{k.name}</a> <span class="meta">{k.count}, {percent(k.novaCounts[4], k.count)}%</span>
+                  {k.children.length > 0 && (
+                    <ul>
+                      {kids(k).map((g) => (
+                        <li>
+                          <a href={categoryHref(g)}>{g.name}</a> <span class="meta">{g.count}, {percent(g.novaCounts[4], g.count)}%</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </li>
+      ))
+    }
+  </ul>
+  <p class="meta">
+    Deeper categories are linked from their parent category's page. <a href={href('search/')}>Search</a> covers all of them.
+  </p>
+</Base>
+
+<style>
+  .tree,
+  .tree ul {
+    list-style: none;
+    padding-left: 0;
+  }
+  .tree ul {
+    padding-left: 1.25rem;
+    border-left: 1px solid var(--rule);
+    margin: 0.25rem 0 0.5rem 0.25rem;
+  }
+  .tree > li {
+    padding: 0.6rem 0;
+    border-bottom: 1px solid var(--rule);
+  }
+  .tree > li > a {
+    font-weight: 700;
+    font-stretch: 108%;
+  }
+  .tree li {
+    margin: 0.15rem 0;
+  }
+</style>

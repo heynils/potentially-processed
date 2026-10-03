@@ -1,0 +1,157 @@
+---
+import type { GetStaticPaths } from 'astro';
+import type { SiteCategory } from '../../../pipeline/lib/types.ts';
+import Base from '../../layouts/Base.astro';
+import AdSlot from '../../components/AdSlot.astro';
+import Breadcrumbs from '../../components/Breadcrumbs.astro';
+import NovaBar from '../../components/NovaBar.astro';
+import ProductList from '../../components/ProductList.astro';
+import {
+  categories,
+  categoryByTag,
+  categoryHref,
+  getProducts,
+  href,
+  lowerFirst,
+  markerByTag,
+  markerHref,
+  markerLabel,
+  percent,
+  productHref,
+} from '../../lib/data.ts';
+
+export const getStaticPaths = (() => categories.map((category) => ({ params: { slug: category.slug }, props: { category } }))) satisfies GetStaticPaths;
+
+interface Props {
+  category: SiteCategory;
+}
+
+// Very large categories list only the least processed products, to keep
+// pages light; the rest are reachable through subcategories and search.
+const MAX_LISTED = 200;
+
+const { category: c } = Astro.props;
+const name = lowerFirst(c.name);
+const listed = getProducts(c.codes.slice(0, MAX_LISTED));
+const ultra = percent(c.novaCounts[4], c.count);
+const leastProcessed = listed[0];
+const summary =
+  `We track ${c.count} ${name}. ${ultra}% of them are ultra-processed (NOVA group 4)` +
+  (c.novaCounts[1] > 0 ? `, and ${c.novaCounts[1]} ${c.novaCounts[1] === 1 ? 'is' : 'are'} minimally processed (group 1).` : '.');
+const chain: SiteCategory[] = [];
+for (let t = c.parent; t; t = categoryByTag.get(t)!.parent) chain.unshift(categoryByTag.get(t)!);
+const children = c.children.map((t) => categoryByTag.get(t)!);
+
+const breadcrumbItems = [
+  { name: 'Home', href: href() },
+  { name: 'Categories', href: href('categories/') },
+  ...chain.map((x) => ({ name: x.name, href: categoryHref(x) })),
+  { name: c.name },
+];
+
+const description = `${ultra}% of the ${c.count} ${name} we track are ultra-processed (NOVA group 4). See them ranked from least to most processed, and the additives that come up most often.`;
+
+const jsonLd = [
+  {
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
+    itemListElement: breadcrumbItems.map((b, i) => ({
+      '@type': 'ListItem',
+      position: i + 1,
+      name: b.name,
+      ...(b.href ? { item: new URL(b.href, Astro.site).href } : {}),
+    })),
+  },
+  {
+    '@context': 'https://schema.org',
+    '@type': 'ItemList',
+    name: `${c.name}, least processed first`,
+    itemListOrder: 'https://schema.org/ItemListOrderAscending',
+    numberOfItems: listed.length,
+    itemListElement: listed.slice(0, 50).map((p, i) => ({
+      '@type': 'ListItem',
+      position: i + 1,
+      url: new URL(productHref(p), Astro.site).href,
+      name: p.name,
+    })),
+  },
+];
+---
+
+<Base title={`Least processed ${name}: ${c.count} products ranked`} description={description} jsonLd={jsonLd}>
+  <Breadcrumbs items={breadcrumbItems} />
+  <div data-pagefind-body>
+    <span hidden data-pagefind-meta="kind">Category</span>
+    <h1>
+      <span data-pagefind-meta="title">{c.name}</span>, from least to most processed
+    </h1>
+    <p class="lede" data-pagefind-ignore>
+      {summary}
+      {leastProcessed && <>The least processed is <a href={productHref(leastProcessed)}>{leastProcessed.name}</a>.</>}
+    </p>
+  </div>
+
+  <NovaBar counts={c.novaCounts} />
+
+  {
+    c.topMarkers.length > 0 && (
+      <section aria-labelledby="markers">
+        <h2 id="markers">What makes {name} ultra-processed</h2>
+        <p>The ingredients and additives that most often put {name} into group 4:</p>
+        <ul class="marker-list">
+          {c.topMarkers.map(([tag, n]) => {
+            const m = markerByTag.get(tag);
+            const label = markerLabel(tag, m?.kind === 'additive' || /^en:e\d/.test(tag) ? 'additives' : 'ingredients');
+            return (
+              <li>
+                {m ? <a href={markerHref(m)}>{label}</a> : label}
+                <span class="meta"> in {n} of {c.count} ({percent(n, c.count)}%)</span>
+              </li>
+            );
+          })}
+        </ul>
+      </section>
+    )
+  }
+
+  {
+    children.length > 0 && (
+      <section aria-labelledby="sub">
+        <h2 id="sub">Narrower categories</h2>
+        <ul class="subcategories">
+          {children.map((x) => (
+            <li>
+              <a href={categoryHref(x)}>{x.name}</a> <span class="meta">({x.count})</span>
+            </li>
+          ))}
+        </ul>
+      </section>
+    )
+  }
+
+  <AdSlot name="category-top" />
+
+  <section aria-labelledby="ranking">
+    <h2 id="ranking">All {name}, least processed first</h2>
+    <p class="meta">
+      Sorted by NOVA group, then by the number of ultra-processing markers, additives and ingredients. This ordering is
+      ours, for comparison; it is not part of NOVA.
+      {c.count > MAX_LISTED && ` Showing the ${MAX_LISTED} least processed of ${c.count}; use the narrower categories or search to find the rest.`}
+    </p>
+    <ProductList products={listed} ordered />
+  </section>
+</Base>
+
+<style>
+  .marker-list,
+  .subcategories {
+    columns: 2 18rem;
+    padding-left: 1.2rem;
+    max-width: 52rem;
+  }
+  .marker-list li,
+  .subcategories li {
+    break-inside: avoid;
+    margin-bottom: 0.3rem;
+  }
+</style>

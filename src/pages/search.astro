@@ -1,0 +1,13 @@
+---
+import Base from '../layouts/Base.astro';
+import SearchBox from '../components/SearchBox.astro';
+import { formatNumber, products } from '../lib/data.ts';
+---
+
+<Base title="Search" description={`Search ${formatNumber(products.length)} products by name, brand, ingredient or category.`} noindex hideHeaderSearch>
+  <h1>Search</h1>
+  <SearchBox variant="full" autofocus />
+  <noscript>
+    <p>Search needs JavaScript. You can also browse by category.</p>
+  </noscript>
+</Base>

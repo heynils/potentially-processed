@@ -1,0 +1,142 @@
+---
+import type { SiteMarker } from '../../pipeline/lib/types.ts';
+import Base from '../layouts/Base.astro';
+import AdSlot from './AdSlot.astro';
+import Breadcrumbs from './Breadcrumbs.astro';
+import ProductList from './ProductList.astro';
+import {
+  categoryByTag,
+  categoryHref,
+  formatNumber,
+  getProducts,
+  href,
+  labels,
+  lowerFirst,
+  percent,
+  products,
+} from '../lib/data.ts';
+import { explainMarker, KINDS } from '../lib/explain.ts';
+
+interface Props {
+  marker: SiteMarker;
+}
+
+const MAX_LISTED = 60;
+const { marker: m } = Astro.props;
+const label = m.eNumber ? `${m.eNumber} ${m.name}` : m.name;
+const lower = m.eNumber ? label : lowerFirst(m.name);
+const listed = getProducts(m.codes.slice(0, MAX_LISTED));
+const classes = m.classes.map((c) => labels.additiveClasses[c]).filter(Boolean);
+const kindLabel = m.kind === 'additive' ? 'Additives' : 'Ingredients';
+const verdict =
+  m.group === 4
+    ? `${label} is one of the markers Open Food Facts uses to classify a food as ultra-processed (NOVA group 4).`
+    : `${label} is not a marker of ultra-processing. It is one of the ingredients Open Food Facts uses to classify a food as processed (NOVA group 3).`;
+
+const explained = explainMarker({ tag: m.tag, type: m.kind === 'additive' ? 'additives' : 'ingredients', group: m.group });
+const title = m.group === 4 ? `Is ${lower} ultra-processed?` : `Is ${lower} ultra-processed? No, but processed`;
+const description = `${verdict} It appears in ${m.count} of the ${formatNumber(products.length)} products on this site. What it is, why NOVA counts it, and where it turns up.`;
+
+const breadcrumbItems = [
+  { name: 'Home', href: href() },
+  { name: kindLabel, href: href(m.kind === 'additive' ? 'additives/' : 'ingredients/') },
+  { name: label },
+];
+const jsonLd = [
+  {
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
+    itemListElement: breadcrumbItems.map((b, i) => ({
+      '@type': 'ListItem',
+      position: i + 1,
+      name: b.name,
+      ...(b.href ? { item: new URL(b.href, Astro.site).href } : {}),
+    })),
+  },
+];
+---
+
+<Base title={title} description={description} jsonLd={jsonLd}>
+  <Breadcrumbs items={breadcrumbItems} />
+  <div data-pagefind-body data-pagefind-meta={`kind:${m.kind === 'additive' ? 'Additive' : 'Ingredient'}`}>
+    <h1 data-pagefind-meta="title">{label}</h1>
+    <p class="lede">{verdict}</p>
+  </div>
+
+  <section aria-labelledby="what">
+    <h2 id="what">What it is and why it counts</h2>
+    <p>{explained.description}</p>
+    <h3>{KINDS[explained.kind].title}</h3>
+    <p>{KINDS[explained.kind].explanation}</p>
+    {
+      classes.length > 0 && (
+        <>
+          <h3>Function</h3>
+          <dl class="classes">
+            {classes.map((c) => (
+              <>
+                <dt>{c!.name}</dt>
+                {c!.description && <dd>{c!.description}</dd>}
+              </>
+            ))}
+          </dl>
+          <p class="meta">Functional class definitions from the EU food additives regulation, via Open Food Facts.</p>
+        </>
+      )
+    }
+    {
+      m.wikidata && (
+        <p>
+          <a href={`https://www.wikidata.org/wiki/${m.wikidata}`}>More about {lower} on Wikidata</a>
+        </p>
+      )
+    }
+  </section>
+
+  <AdSlot name="marker-top" />
+
+  <section aria-labelledby="where">
+    <h2 id="where">Where it turns up</h2>
+    <p>
+      {label} appears in {m.count} of the {formatNumber(products.length)} products on this site ({percent(m.count, products.length)}%).
+    </p>
+    {
+      m.topCategories.length > 0 && (
+        <ul class="cats">
+          {m.topCategories.map(([tag, n]) => {
+            const c = categoryByTag.get(tag)!;
+            return (
+              <li>
+                <a href={categoryHref(c)}>{c.name}</a>
+                <span class="meta">
+                  {' '}
+                  {n} of {c.count} products
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      )
+    }
+    <h3>Products containing {lower}</h3>
+    <ProductList products={listed} />
+    {m.count > MAX_LISTED && <p class="meta">Showing the {MAX_LISTED} most popular of {m.count}.</p>}
+  </section>
+
+  <p class="meta">
+    <a href={href('what-is-nova/')}>How the NOVA classification works</a>
+  </p>
+</Base>
+
+<style>
+  .classes dt {
+    font-weight: 700;
+  }
+  .classes dd {
+    margin: 0 0 0.75rem;
+  }
+  .cats {
+    padding-left: 1.2rem;
+    columns: 2 18rem;
+  }
+</style>

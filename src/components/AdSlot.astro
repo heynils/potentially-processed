@@ -1,0 +1,37 @@
+---
+// A reserved place for an ad unit. Renders nothing until both the AdSense
+// client id (PUBLIC_ADSENSE_CLIENT) and a slot id for this position are set,
+// so the site stays ad-free and layout-stable until AdSense approval.
+// Slot ids come from env vars like PUBLIC_AD_SLOT_PRODUCT_TOP.
+interface Props {
+  name: 'product-top' | 'product-bottom' | 'category-top' | 'marker-top';
+}
+
+const { name } = Astro.props;
+const client = import.meta.env.PUBLIC_ADSENSE_CLIENT;
+const envKey = `PUBLIC_AD_SLOT_${name.toUpperCase().replace(/-/g, '_')}`;
+const slot = import.meta.env[envKey] as string | undefined;
+---
+
+{
+  client && slot && (
+    <aside class="ad-slot" aria-label="Advertisement">
+      <ins
+        class="adsbygoogle"
+        style="display:block"
+        data-ad-client={client}
+        data-ad-slot={slot}
+        data-ad-format="auto"
+        data-full-width-responsive="true"
+      />
+      <script is:inline>(window.adsbygoogle = window.adsbygoogle || []).push({});</script>
+    </aside>
+  )
+}
+
+<style>
+  .ad-slot {
+    margin: 2rem 0;
+    min-height: 100px;
+  }
+</style>

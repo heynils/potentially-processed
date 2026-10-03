@@ -1,0 +1,15 @@
+---
+import type { GetStaticPaths } from 'astro';
+import type { SiteMarker } from '../../../pipeline/lib/types.ts';
+import MarkerPage from '../../components/MarkerPage.astro';
+import { markers } from '../../lib/data.ts';
+
+export const getStaticPaths = (() =>
+  markers.filter((m) => m.kind === 'ingredient').map((marker) => ({ params: { slug: marker.slug }, props: { marker } }))) satisfies GetStaticPaths;
+
+interface Props {
+  marker: SiteMarker;
+}
+---
+
+<MarkerPage marker={Astro.props.marker} />

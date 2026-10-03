@@ -1,0 +1,157 @@
+---
+import type { NovaGroup } from '../../pipeline/lib/types.ts';
+import Base from '../layouts/Base.astro';
+import NovaBadge from '../components/NovaBadge.astro';
+import NovaBar from '../components/NovaBar.astro';
+import ProductList from '../components/ProductList.astro';
+import SearchBox from '../components/SearchBox.astro';
+import { categories, categoryHref, formatNumber, href, markerHref, markers, meta, percent, products } from '../lib/data.ts';
+import { NOVA } from '../lib/nova.ts';
+import { SITE } from '../lib/site.ts';
+
+// Products are sorted by popularity, so the head of the list is what people scan most.
+const popular = products.slice(0, 12);
+
+// Mid-sized categories make better entry points than huge generic ones.
+const featured = [...categories]
+  .filter((c) => c.count >= 20 && c.count <= 400)
+  .sort((a, b) => b.count - a.count)
+  .slice(0, 12)
+  .sort((a, b) => percent(a.novaCounts[4], a.count) - percent(b.novaCounts[4], b.count));
+
+const topMarkers = markers.filter((m) => m.group === 4).slice(0, 10);
+const ultraShare = percent(meta.novaCounts[4], products.length);
+
+const jsonLd = [
+  {
+    '@context': 'https://schema.org',
+    '@type': 'WebSite',
+    name: SITE.name,
+    url: new URL(href(), Astro.site).href,
+    description: SITE.tagline,
+  },
+];
+---
+
+<Base title={SITE.name} description={`${SITE.tagline} NOVA groups for ${formatNumber(products.length)} products from Open Food Facts.`} jsonLd={jsonLd} hideHeaderSearch>
+  <section class="hero">
+    <h1>Is it ultra-processed?</h1>
+    <p class="lede">
+      Look up a packaged food to see its NOVA processing group, the ingredients that put it there, and less processed
+      alternatives from the same shelf. {formatNumber(products.length)} products, from
+      <a href="https://world.openfoodfacts.org/">Open Food Facts</a> data.
+    </p>
+    <SearchBox variant="full" />
+  </section>
+
+  <section aria-labelledby="groups">
+    <h2 id="groups">The four NOVA groups</h2>
+    <p>
+      NOVA sorts food by the extent and purpose of industrial processing, not by nutrients. It was developed at the
+      University of São Paulo and is widely used in research on ultra-processed food.
+      <a href={href('what-is-nova/')}>Read the full explanation</a>.
+    </p>
+    <ol class="groups">
+      {
+        ([1, 2, 3, 4] as NovaGroup[]).map((g) => (
+          <li>
+            <NovaBadge group={g} />
+            <div>
+              <h3>{NOVA[g].name}</h3>
+              <p>For example {NOVA[g].examples}.</p>
+            </div>
+          </li>
+        ))
+      }
+    </ol>
+    <p>
+      Of the products on this site, {ultraShare}% are in group 4. They are mostly the popular packaged foods people
+      look up, so the share is higher than in a typical diet.
+    </p>
+    <NovaBar counts={meta.novaCounts} />
+  </section>
+
+  <section aria-labelledby="popular">
+    <h2 id="popular">Most looked-up products</h2>
+    <ProductList products={popular} />
+  </section>
+
+  <section aria-labelledby="cats">
+    <h2 id="cats">Categories, least ultra-processed first</h2>
+    <ul class="cat-list">
+      {
+        featured.map((c) => (
+          <li>
+            <a href={categoryHref(c)}>{c.name}</a>
+            <span class="meta">
+              {' '}
+              {percent(c.novaCounts[4], c.count)}% of {c.count} ultra-processed
+            </span>
+          </li>
+        ))
+      }
+    </ul>
+    <p><a href={href('categories/')}>All {categories.length} categories</a></p>
+  </section>
+
+  <section aria-labelledby="markers">
+    <h2 id="markers">The most common signs of ultra-processing</h2>
+    <p>The ingredients and additives that most often put a product on this site into group 4:</p>
+    <ol class="cat-list">
+      {
+        topMarkers.map((m) => (
+          <li>
+            <a href={markerHref(m)}>{m.eNumber ? `${m.eNumber} ${m.name}` : m.name}</a>
+            <span class="meta"> in {formatNumber(m.count)} products</span>
+          </li>
+        ))
+      }
+    </ol>
+    <p>
+      <a href={href('ingredients/')}>All ingredients</a> · <a href={href('additives/')}>All additives</a>
+    </p>
+  </section>
+</Base>
+
+<style>
+  .hero {
+    padding: 1rem 0 1.5rem;
+  }
+  .hero h1 {
+    font-size: clamp(2.5rem, 7vw, 4.5rem);
+    font-stretch: 125%;
+    max-width: 14ch;
+  }
+  .groups {
+    list-style: none;
+    padding: 0;
+    display: grid;
+    gap: 0 2.5rem;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr));
+    max-width: 56rem;
+  }
+  .groups li {
+    display: flex;
+    gap: 0.9rem;
+    align-items: flex-start;
+    padding: 0.9rem 0;
+    border-top: 1px solid var(--rule);
+  }
+  .groups h3 {
+    margin: 0 0 0.25rem;
+  }
+  .groups p {
+    margin: 0;
+    color: var(--muted);
+    font-size: 0.95rem;
+  }
+  .cat-list {
+    columns: 2 20rem;
+    padding-left: 1.2rem;
+    max-width: 56rem;
+  }
+  .cat-list li {
+    break-inside: avoid;
+    margin-bottom: 0.35rem;
+  }
+</style>

@@ -1,0 +1,33 @@
+{
+  "name": "potentially-processed",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Is it ultra-processed? A static NOVA lookup site built from Open Food Facts data.",
+  "type": "module",
+  "license": "UNLICENSED",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build && pagefind --site dist",
+    "preview": "astro preview",
+    "check": "astro check",
+    "test": "node --test \"pipeline/test/*.test.ts\"",
+    "data:taxonomies": "node pipeline/fetch-taxonomies.ts",
+    "data:extract": "node pipeline/extract.ts",
+    "data:select": "node pipeline/select.ts",
+    "data": "npm run data:taxonomies && npm run data:extract -- --input https://static.openfoodfacts.org/data/openfoodfacts-products.jsonl.gz --min-lines 1000000 && npm run data:select",
+    "data:sample": "node pipeline/extract.ts --input pipeline/fixtures/sample.jsonl.gz --out data/work-sample && node pipeline/select.ts --work data/work-sample --taxonomies pipeline/fixtures/taxonomies --source fixture --target 300"
+  },
+  "dependencies": {
+    "@astrojs/sitemap": "^3.7.4",
+    "@fontsource-variable/archivo": "^5.3.0",
+    "astro": "^7.3.5"
+  },
+  "devDependencies": {
+    "@astrojs/check": "^0.9.10",
+    "pagefind": "^1.5.2",
+    "typescript": "^6.0.3"
+  }
+}

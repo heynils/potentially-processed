@@ -1,0 +1,68 @@
+---
+import type { SiteProduct } from '../../pipeline/lib/types.ts';
+import { productHref } from '../lib/data.ts';
+import NovaBadge from './NovaBadge.astro';
+
+interface Props {
+  products: SiteProduct[];
+  /** Number the list (used for "least processed first" rankings) */
+  ordered?: boolean;
+  start?: number;
+}
+
+const { products, ordered = false, start = 1 } = Astro.props;
+const Tag = ordered ? 'ol' : 'ul';
+---
+
+<Tag class:list={['product-list', { ordered }]} start={ordered ? start : undefined}>
+  {
+    products.map((p, i) => (
+      <li>
+        {ordered && <span class="rank">{start + i}</span>}
+        <NovaBadge group={p.nova} />
+        <span class="text">
+          <a href={productHref(p)}>{p.name}</a>
+          {(p.brand || p.quantity) && <span class="sub">{[p.brand, p.quantity].filter(Boolean).join(' · ')}</span>}
+        </span>
+      </li>
+    ))
+  }
+</Tag>
+
+<style>
+  .product-list {
+    list-style: none;
+    padding: 0;
+    margin: 0 0 1.5rem;
+    max-width: 48rem;
+  }
+  .product-list li {
+    display: flex;
+    gap: 0.75rem;
+    align-items: baseline;
+    padding: 0.55rem 0;
+    border-bottom: 1px solid var(--rule);
+  }
+  .product-list :global(.nova-badge) {
+    align-self: center;
+  }
+  .rank {
+    min-width: 2.2ch;
+    text-align: right;
+    color: var(--muted);
+    font-size: 0.875rem;
+    font-variant-numeric: tabular-nums;
+    font-stretch: 85%;
+  }
+  .text {
+    display: flex;
+    flex-wrap: wrap;
+    column-gap: 0.6rem;
+    align-items: baseline;
+  }
+  .sub {
+    color: var(--muted);
+    font-size: 0.875rem;
+    font-stretch: 88%;
+  }
+</style>

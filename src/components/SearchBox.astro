@@ -1,0 +1,277 @@
+---
+import { href } from '../lib/data.ts';
+
+interface Props {
+  /** "compact": header form that submits to /search/. "full": live results below the box. */
+  variant?: 'compact' | 'full';
+  autofocus?: boolean;
+}
+
+const { variant = 'full', autofocus = false } = Astro.props;
+const id = variant === 'compact' ? 'q-header' : 'q';
+---
+
+{
+  variant === 'compact' ? (
+    <form class="search-compact" role="search" action={href('search/')} method="get">
+      <label class="visually-hidden" for={id}>
+        Search products
+      </label>
+      <input id={id} type="search" name="q" placeholder="Search products" autocomplete="off" />
+      <button type="submit">Search</button>
+    </form>
+  ) : (
+    <div class="search-full" data-search>
+      <form role="search" action={href('search/')} method="get">
+        <label for={id}>Search by product, brand, ingredient or category</label>
+        <div class="row">
+          <input
+            id={id}
+            type="search"
+            name="q"
+            placeholder="e.g. granola, Heinz, maltodextrin"
+            autocomplete="off"
+            autofocus={autofocus}
+            aria-controls="search-results"
+          />
+          <button type="submit">Search</button>
+        </div>
+      </form>
+      <p class="status meta" aria-live="polite" data-status />
+      <ol id="search-results" class="results" data-results />
+    </div>
+  )
+}
+
+<script>
+  // Pagefind is a static search index generated after `astro build`
+  // (see the "build" script). The browser downloads only the index chunks a
+  // query needs, so there is no search server.
+  type PagefindResult = {
+    url: string;
+    excerpt: string;
+    meta: { title?: string; nova?: string; brand?: string; kind?: string };
+  };
+  type Pagefind = {
+    options: (o: { baseUrl: string }) => Promise<void>;
+    search: (q: string) => Promise<{ results: { data: () => Promise<PagefindResult> }[] } | null>;
+    debouncedSearch: (q: string, opts?: object, ms?: number) => Promise<{ results: { data: () => Promise<PagefindResult> }[] } | null>;
+  };
+
+  const base = import.meta.env.BASE_URL;
+  let pagefind: Promise<Pagefind> | null = null;
+
+  function loadPagefind(): Promise<Pagefind> {
+    pagefind ??= import(/* @vite-ignore */ `${base}pagefind/pagefind.js`).then(async (pf: Pagefind) => {
+      await pf.options({ baseUrl: base });
+      return pf;
+    });
+    return pagefind;
+  }
+
+  const escapeHtml = (s: string) =>
+    s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
+
+  function render(list: HTMLElement, items: PagefindResult[]) {
+    list.innerHTML = items
+      .map((r) => {
+        const nova = r.meta.nova ? `<span class="nova-chip nova-chip-${escapeHtml(r.meta.nova)}">NOVA ${escapeHtml(r.meta.nova)}</span>` : '';
+        const sub = [r.meta.kind, r.meta.brand].filter(Boolean).map((s) => escapeHtml(s!)).join(' · ');
+        // Pagefind excerpts are already HTML-escaped, with <mark> around matches.
+        return `<li>${nova}<a href="${escapeHtml(r.url)}">${escapeHtml(r.meta.title ?? r.url)}</a>${sub ? `<span class="sub">${sub}</span>` : ''}<p class="excerpt">${r.excerpt}</p></li>`;
+      })
+      .join('');
+  }
+
+  for (const root of document.querySelectorAll<HTMLElement>('[data-search]')) {
+    const input = root.querySelector('input')!;
+    const status = root.querySelector<HTMLElement>('[data-status]')!;
+    const list = root.querySelector<HTMLElement>('[data-results]')!;
+
+    async function run(query: string) {
+      const q = query.trim();
+      if (!q) {
+        list.innerHTML = '';
+        status.textContent = '';
+        return;
+      }
+      let pf: Pagefind;
+      try {
+        pf = await loadPagefind();
+      } catch {
+        status.textContent = 'Search is not available in this build. Run `npm run build` to generate the index.';
+        return;
+      }
+      const search = await pf.debouncedSearch(q, {}, 200);
+      if (search === null) return; // superseded by a newer keystroke
+      const items = await Promise.all(search.results.slice(0, 20).map((r) => r.data()));
+      render(list, items);
+      const n = search.results.length;
+      status.textContent = n === 0 ? `No results for “${q}”.` : `${n} result${n === 1 ? '' : 's'}${n > 20 ? ', showing the first 20' : ''}.`;
+    }
+
+    input.addEventListener('input', () => run(input.value));
+    root.querySelector('form')!.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const url = new URL(location.href);
+      if (url.pathname.endsWith('/search/')) {
+        url.searchParams.set('q', input.value);
+        history.replaceState(null, '', url);
+      }
+      run(input.value);
+    });
+
+    const initial = new URLSearchParams(location.search).get('q');
+    if (initial) {
+      input.value = initial;
+      run(initial);
+    }
+    // Start fetching the index as soon as someone shows intent to search.
+    input.addEventListener('focus', () => loadPagefind().catch(() => {}), { once: true });
+  }
+</script>
+
+<style>
+  .search-compact {
+    display: flex;
+    gap: 0.4rem;
+  }
+
+  input[type='search'] {
+    font: inherit;
+    color: var(--text);
+    background: var(--bg);
+    border: 1px solid var(--muted);
+    border-radius: 2px;
+    padding: 0.45rem 0.6rem;
+    min-width: 0;
+  }
+
+  .search-compact input {
+    width: 13rem;
+    font-size: 0.95rem;
+  }
+
+  button {
+    font: inherit;
+    font-weight: 650;
+    font-stretch: 90%;
+    color: var(--bg);
+    background: var(--text);
+    border: 1px solid var(--text);
+    border-radius: 2px;
+    padding: 0.45rem 0.9rem;
+    cursor: pointer;
+  }
+
+  button:hover {
+    background: var(--link-hover);
+    border-color: var(--link-hover);
+  }
+
+  .search-compact button {
+    font-size: 0.95rem;
+  }
+
+  .search-full label {
+    display: block;
+    font-weight: 650;
+    margin-bottom: 0.4rem;
+  }
+
+  .search-full .row {
+    display: flex;
+    gap: 0.5rem;
+    max-width: 40rem;
+  }
+
+  .search-full input {
+    flex: 1;
+    font-size: 1.15rem;
+    padding: 0.65rem 0.8rem;
+    border-width: 2px;
+    border-color: var(--text);
+  }
+
+  .search-full button {
+    font-size: 1.05rem;
+    padding: 0.6rem 1.2rem;
+  }
+
+  .status {
+    margin: 0.75rem 0 0.5rem;
+    min-height: 1.4em;
+  }
+
+  .results {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    max-width: 48rem;
+  }
+
+  .results :global(li) {
+    padding: 0.75rem 0;
+    border-bottom: 1px solid var(--rule);
+  }
+
+  .results :global(li > a) {
+    font-weight: 650;
+  }
+
+  .results :global(.sub) {
+    margin-left: 0.5rem;
+    color: var(--muted);
+    font-size: 0.9rem;
+  }
+
+  .results :global(.excerpt) {
+    margin: 0.25rem 0 0;
+    font-size: 0.9rem;
+    color: var(--muted);
+  }
+
+  .results :global(mark) {
+    background: none;
+    color: var(--text);
+    font-weight: 650;
+  }
+
+  .results :global(.nova-chip) {
+    display: inline-block;
+    font-size: 0.75rem;
+    font-weight: 750;
+    font-stretch: 85%;
+    padding: 0.05rem 0.4rem;
+    margin-right: 0.5rem;
+    border-radius: 2px;
+    vertical-align: 0.1em;
+  }
+
+  .results :global(.nova-chip-1) {
+    background: var(--nova-1);
+    color: var(--nova-1-ink);
+  }
+  .results :global(.nova-chip-2) {
+    background: var(--nova-2);
+    color: var(--nova-2-ink);
+  }
+  .results :global(.nova-chip-3) {
+    background: var(--nova-3);
+    color: var(--nova-3-ink);
+  }
+  .results :global(.nova-chip-4) {
+    background: var(--nova-4);
+    color: var(--nova-4-ink);
+  }
+
+  @media (max-width: 40rem) {
+    .search-compact {
+      width: 100%;
+    }
+    .search-compact input {
+      flex: 1;
+      width: auto;
+    }
+  }
+</style>

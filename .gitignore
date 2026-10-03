@@ -1,0 +1,23 @@
+# dependencies
+node_modules/
+
+# build output
+dist/
+.astro/
+
+# pipeline working files and generated site data (rebuilt by CI; never commit the OFF dump)
+data/
+*.jsonl
+*.jsonl.gz
+!pipeline/fixtures/*.jsonl.gz
+!pipeline/fixtures/*.jsonl
+
+# env & editors
+.env
+.env.*
+!.env.example
+.DS_Store
+.vscode/*
+!.vscode/extensions.json
+.idea/
+npm-debug.log*

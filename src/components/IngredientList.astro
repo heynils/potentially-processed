@@ -1,0 +1,59 @@
+---
+// Renders OFF's parsed ingredient tree the way a pack does: a comma-separated
+// list with sub-ingredients in brackets. Ingredients matched to a NOVA marker
+// are highlighted (strongly for group 4, lightly for group 3), and the
+// highlight is also spelled out for screen readers.
+//
+// The markup is built as a string because punctuation here must sit flush
+// against the text ("Emulsifier (Sunflower lecithins)"), which template
+// whitespace makes awkward. Every piece of data is escaped.
+import type { SiteIngredient } from '../../pipeline/lib/types.ts';
+
+interface Props {
+  items: SiteIngredient[];
+}
+
+const escapeHtml = (s: string) =>
+  s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
+
+/** Packs often shout ("MODIFIED STARCH"); show all-caps text in lower case. */
+const tidy = (s: string) => (s.length > 3 && s === s.toUpperCase() && /[A-Z]/.test(s) ? s.toLowerCase() : s);
+
+function render(items: SiteIngredient[]): string {
+  return items
+    .map((ing) => {
+      const text = escapeHtml(tidy(ing.text));
+      let out =
+        ing.markerGroup && ing.markerGroup >= 3
+          ? `<mark class="m${ing.markerGroup}">${text}<span class="visually-hidden"> (${ing.markerGroup === 4 ? 'ultra-processing' : 'processing'} marker)</span></mark>`
+          : text;
+      if (ing.percent !== undefined) out += ` ${ing.percent}%`;
+      if (ing.children?.length) out += ` (${render(ing.children)})`;
+      return out;
+    })
+    .join(', ');
+}
+
+const html = render(Astro.props.items);
+---
+
+<span class="ingredients"><Fragment set:html={html} /></span>
+
+<style>
+  .ingredients :global(mark) {
+    color: inherit;
+    padding: 0 0.15em;
+    border-radius: 1px;
+    -webkit-box-decoration-break: clone;
+    box-decoration-break: clone;
+  }
+  .ingredients :global(.m4) {
+    background: var(--mark-4-bg);
+    box-shadow: inset 0 -2px 0 var(--mark-4-line);
+    font-weight: 650;
+  }
+  .ingredients :global(.m3) {
+    background: var(--mark-3-bg);
+    box-shadow: inset 0 -1px 0 var(--mark-3-line);
+  }
+</style>

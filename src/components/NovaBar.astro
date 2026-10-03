@@ -1,0 +1,104 @@
+---
+// Horizontal stacked bar showing how a set of products splits across the
+// four NOVA groups, with the numbers written out for screen readers and
+// anyone who prefers text.
+import type { NovaGroup } from '../../pipeline/lib/types.ts';
+import { NOVA } from '../lib/nova.ts';
+import { formatNumber, percent } from '../lib/data.ts';
+
+interface Props {
+  counts: Record<NovaGroup, number>;
+  /** Optional: highlight the segment this product belongs to */
+  current?: NovaGroup;
+}
+
+const { counts, current } = Astro.props;
+const total = counts[1] + counts[2] + counts[3] + counts[4];
+const groups = ([1, 2, 3, 4] as NovaGroup[]).filter((g) => counts[g] > 0);
+---
+
+<figure class="nova-bar">
+  <div class="bar" aria-hidden="true">
+    {
+      groups.map((g) => (
+        <span class:list={[`seg-${g}`, { current: g === current }]} style={`flex-grow:${counts[g]}`}>
+          {percent(counts[g], total) >= 8 ? `${percent(counts[g], total)}%` : ''}
+        </span>
+      ))
+    }
+  </div>
+  <figcaption>
+    <ul>
+      {
+        groups.map((g) => (
+          <li>
+            <span class:list={['key', `seg-${g}`]} aria-hidden="true" />
+            Group {g}, {NOVA[g].short}: {formatNumber(counts[g])} ({percent(counts[g], total)}%)
+          </li>
+        ))
+      }
+    </ul>
+  </figcaption>
+</figure>
+
+<style>
+  .nova-bar {
+    margin: 1rem 0 1.5rem;
+    max-width: 44rem;
+  }
+  .bar {
+    display: flex;
+    height: 1.75rem;
+    gap: 2px;
+  }
+  .bar span {
+    flex-basis: 0;
+    min-width: 4px;
+    display: flex;
+    align-items: center;
+    padding-left: 0.4rem;
+    font-size: 0.8rem;
+    font-weight: 700;
+    font-stretch: 85%;
+    overflow: hidden;
+    white-space: nowrap;
+  }
+  .bar .current {
+    outline: 2px solid var(--text);
+    outline-offset: 1px;
+  }
+  .seg-1 {
+    background: var(--nova-1);
+    color: var(--nova-1-ink);
+  }
+  .seg-2 {
+    background: var(--nova-2);
+    color: var(--nova-2-ink);
+  }
+  .seg-3 {
+    background: var(--nova-3);
+    color: var(--nova-3-ink);
+  }
+  .seg-4 {
+    background: var(--nova-4);
+    color: var(--nova-4-ink);
+  }
+  figcaption ul {
+    list-style: none;
+    padding: 0;
+    margin: 0.5rem 0 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.15rem 1.25rem;
+    font-size: 0.875rem;
+    color: var(--muted);
+    font-stretch: 90%;
+  }
+  .key {
+    display: inline-block;
+    width: 0.7rem;
+    height: 0.7rem;
+    margin-right: 0.3rem;
+    vertical-align: -0.05em;
+  }
+</style>

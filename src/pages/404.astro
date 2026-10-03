@@ -1,0 +1,14 @@
+---
+import Base from '../layouts/Base.astro';
+import SearchBox from '../components/SearchBox.astro';
+import { href } from '../lib/data.ts';
+---
+
+<Base title="Page not found" description="This page does not exist." noindex hideHeaderSearch>
+  <h1>Page not found</h1>
+  <p class="lede">
+    The product may have been removed in a data update, or the address may be mistyped. Try searching for it, or
+    <a href={href('categories/')}>browse the categories</a>.
+  </p>
+  <SearchBox variant="full" />
+</Base>

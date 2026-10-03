@@ -1,0 +1,222 @@
+---
+import '@fontsource-variable/archivo/wdth.css';
+import '../styles/global.css';
+import { href, meta } from '../lib/data.ts';
+import { SITE } from '../lib/site.ts';
+import SearchBox from '../components/SearchBox.astro';
+
+interface Props {
+  title: string;
+  description: string;
+  /** schema.org objects, rendered as JSON-LD */
+  jsonLd?: object[];
+  /** Product image for social cards */
+  image?: string | null;
+  noindex?: boolean;
+  /** Hide the header search form (on pages that have their own) */
+  hideHeaderSearch?: boolean;
+}
+
+const { title, description, jsonLd = [], image, noindex = false, hideHeaderSearch = false } = Astro.props;
+const fullTitle = title === SITE.name ? title : `${title} | ${SITE.name}`;
+const canonical = new URL(Astro.url.pathname, Astro.site).href;
+const adsenseClient = import.meta.env.PUBLIC_ADSENSE_CLIENT;
+const year = new Date().getFullYear();
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{fullTitle}</title>
+    <meta name="description" content={description} />
+    <link rel="canonical" href={canonical} />
+    {noindex && <meta name="robots" content="noindex" />}
+    <link rel="icon" href={href('favicon.svg')} type="image/svg+xml" />
+    <link rel="sitemap" href={href('sitemap-index.xml')} />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#111317" media="(prefers-color-scheme: dark)" />
+
+    <meta property="og:site_name" content={SITE.name} />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={canonical} />
+    {image && <meta property="og:image" content={image} />}
+    <meta name="twitter:card" content="summary" />
+
+    {jsonLd.map((data) => <script is:inline type="application/ld+json" set:html={JSON.stringify(data)} />)}
+
+    {
+      /* Ad slot: stays empty until PUBLIC_ADSENSE_CLIENT is set after AdSense approval. */
+      adsenseClient && (
+        <script
+          is:inline
+          async
+          src={`https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${adsenseClient}`}
+          crossorigin="anonymous"
+        />
+      )
+    }
+    <slot name="head" />
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+
+    {
+      meta.source === 'fixture' && (
+        <div class="fixture-banner" role="note">
+          Development build using the committed sample data, not the full Open Food Facts export.
+        </div>
+      )
+    }
+
+    <header class="site-header">
+      <div class="wrap header-inner">
+        <a class="brand" href={href()}>
+          <span class="brand-mark" aria-hidden="true">
+            <span></span><span></span><span></span><span></span>
+          </span>
+          {SITE.name}
+        </a>
+        <nav aria-label="Main">
+          <ul>
+            <li><a href={href('categories/')}>Categories</a></li>
+            <li><a href={href('what-is-nova/')}>What is NOVA?</a></li>
+            <li><a href={href('about/')}>About the data</a></li>
+          </ul>
+        </nav>
+        {!hideHeaderSearch && <SearchBox variant="compact" />}
+      </div>
+    </header>
+
+    <main id="main" class="wrap">
+      <slot />
+    </main>
+
+    <footer class="site-footer">
+      <div class="wrap">
+        <p>
+          Product data from <a href="https://world.openfoodfacts.org/">Open Food Facts</a>, a free, collaborative database
+          of food products, available under the
+          <a href="https://opendatacommons.org/licenses/odbl/1-0/">Open Database License (ODbL)</a>. Product photos are by
+          Open Food Facts contributors under
+          <a href="https://creativecommons.org/licenses/by-sa/3.0/">CC BY-SA 3.0</a>.
+        </p>
+        <p>
+          NOVA groups are automated estimates computed by Open Food Facts from crowdsourced ingredient lists, which can be
+          incomplete or out of date. Check the pack. This site is for general information only and is not medical or
+          dietary advice.
+        </p>
+        <p class="meta">
+          {
+            meta.exportDate
+              ? `Data from the Open Food Facts export of ${new Date(meta.exportDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}.`
+              : `Data generated ${new Date(meta.generatedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}.`
+          }
+          <a href={href('about/')}>How this site works</a> · © {year}
+          {SITE.name}
+        </p>
+      </div>
+    </footer>
+  </body>
+</html>
+
+<style>
+  .fixture-banner {
+    background: var(--nova-2);
+    color: var(--nova-2-ink);
+    padding: 0.4rem var(--gutter);
+    font-size: 0.875rem;
+    text-align: center;
+  }
+
+  .site-header {
+    border-bottom: 1px solid var(--rule);
+    margin-bottom: 2rem;
+  }
+
+  .header-inner {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem 2rem;
+    padding-top: 1rem;
+    padding-bottom: 1rem;
+  }
+
+  .brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.6rem;
+    font-weight: 800;
+    font-stretch: 112%;
+    font-size: 1.15rem;
+    color: var(--text);
+    text-decoration: none;
+    letter-spacing: -0.01em;
+  }
+
+  /* four bars, one per NOVA group */
+  .brand-mark {
+    display: inline-grid;
+    grid-template-columns: repeat(4, 0.3rem);
+    gap: 2px;
+    align-items: end;
+    height: 1.1rem;
+  }
+  .brand-mark span {
+    display: block;
+  }
+  .brand-mark span:nth-child(1) {
+    background: var(--nova-1);
+    height: 40%;
+  }
+  .brand-mark span:nth-child(2) {
+    background: var(--nova-2);
+    height: 60%;
+  }
+  .brand-mark span:nth-child(3) {
+    background: var(--nova-3);
+    height: 80%;
+  }
+  .brand-mark span:nth-child(4) {
+    background: var(--nova-4);
+    height: 100%;
+  }
+
+  nav ul {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem 1.25rem;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    font-stretch: 90%;
+  }
+
+  nav a {
+    color: var(--text);
+    text-decoration: none;
+  }
+  nav a:hover {
+    text-decoration: underline;
+  }
+
+  .header-inner :global(.search-compact) {
+    margin-left: auto;
+  }
+
+  .site-footer {
+    margin-top: 5rem;
+    padding: 2rem 0 3rem;
+    border-top: 1px solid var(--rule);
+    font-size: 0.925rem;
+    color: var(--muted);
+  }
+  .site-footer a {
+    color: inherit;
+  }
+</style>

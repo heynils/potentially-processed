@@ -1,0 +1,276 @@
+/*
+  Design notes
+  - One typeface, Archivo Variable, using its width axis for hierarchy:
+    expanded and heavy for headings, condensed for dense metadata.
+  - Cool white/ink palette with a single blue for links. Colour is otherwise
+    reserved for meaning: the four NOVA groups.
+  - Structure comes from rules and whitespace, not boxes and shadows.
+*/
+
+:root {
+  --bg: #ffffff;
+  --bg-subtle: #f3f5f7;
+  --text: #15181d;
+  --muted: #565d6b;
+  --rule: #d8dce2;
+  --rule-strong: #15181d;
+  --link: #1f47b8;
+  --link-hover: #0f2a7a;
+  --focus: #1f47b8;
+
+  /* NOVA scale: badge fill + readable text colour on that fill */
+  --nova-1: #2f7a35;
+  --nova-1-ink: #ffffff;
+  --nova-2: #e3b505;
+  --nova-2-ink: #1b1a14;
+  --nova-3: #b5540c;
+  --nova-3-ink: #ffffff;
+  --nova-4: #c0262d;
+  --nova-4-ink: #ffffff;
+
+  /* ingredient highlighting */
+  --mark-4-bg: #fde4e4;
+  --mark-4-line: #c0262d;
+  --mark-3-bg: #fbeedd;
+  --mark-3-line: #b5540c;
+
+  --font: 'Archivo Variable', 'Archivo', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --measure: 68ch;
+  --page: 72rem;
+  --gutter: clamp(1rem, 4vw, 2.5rem);
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #111317;
+    --bg-subtle: #1a1d23;
+    --text: #e7e9ed;
+    --muted: #a3aab7;
+    --rule: #2e333c;
+    --rule-strong: #e7e9ed;
+    --link: #9db7ff;
+    --link-hover: #c9d7ff;
+    --focus: #9db7ff;
+    --nova-1: #3f9a46;
+    --nova-2: #e8bd17;
+    --nova-3: #d06a1c;
+    --nova-4: #d9353c;
+    --mark-4-bg: #4a1a1d;
+    --mark-4-line: #ff7a7f;
+    --mark-3-bg: #43301a;
+    --mark-3-line: #f0a35e;
+    color-scheme: dark;
+  }
+}
+
+/* --- base ---------------------------------------------------------------- */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 1.0625rem;
+  line-height: 1.6;
+  font-variation-settings: normal;
+  overflow-wrap: break-word;
+}
+
+img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+}
+
+a {
+  color: var(--link);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.18em;
+}
+
+a:hover {
+  color: var(--link-hover);
+  text-decoration-thickness: 2px;
+}
+
+:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: 1px;
+}
+
+h1,
+h2,
+h3 {
+  line-height: 1.12;
+  margin: 0 0 0.5em;
+  text-wrap: balance;
+}
+
+h1 {
+  font-size: clamp(2rem, 5vw, 3.25rem);
+  font-weight: 800;
+  font-stretch: 118%;
+  letter-spacing: -0.02em;
+}
+
+h2 {
+  font-size: clamp(1.35rem, 2.6vw, 1.75rem);
+  font-weight: 750;
+  font-stretch: 112%;
+  letter-spacing: -0.01em;
+  margin-top: 2.25em;
+}
+
+h3 {
+  font-size: 1.125rem;
+  font-weight: 700;
+  font-stretch: 105%;
+  margin-top: 1.5em;
+}
+
+p,
+ul,
+ol,
+dl,
+table {
+  margin: 0 0 1em;
+}
+
+p,
+li,
+dd {
+  max-width: var(--measure);
+}
+
+hr {
+  border: 0;
+  border-top: 1px solid var(--rule);
+  margin: 2.5rem 0;
+}
+
+small,
+.meta {
+  font-size: 0.875rem;
+  color: var(--muted);
+}
+
+/* condensed type for dense metadata */
+.condensed {
+  font-stretch: 82%;
+}
+
+.visually-hidden {
+  position: absolute !important;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.skip-link {
+  position: absolute;
+  left: 0.5rem;
+  top: -3rem;
+  background: var(--bg);
+  padding: 0.5rem 0.75rem;
+  z-index: 10;
+}
+
+.skip-link:focus {
+  top: 0.5rem;
+}
+
+/* --- layout -------------------------------------------------------------- */
+
+.wrap {
+  max-width: var(--page);
+  margin: 0 auto;
+  padding: 0 var(--gutter);
+}
+
+.lede {
+  font-size: 1.2rem;
+  line-height: 1.5;
+  max-width: 60ch;
+}
+
+.two-col {
+  display: grid;
+  gap: 2rem 3rem;
+}
+
+@media (min-width: 52rem) {
+  .two-col {
+    grid-template-columns: minmax(0, 1fr) 16rem;
+    align-items: start;
+  }
+}
+
+/* --- tables -------------------------------------------------------------- */
+
+.table-scroll {
+  overflow-x: auto;
+  margin: 0 0 1.5em;
+}
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 0.95rem;
+}
+
+th,
+td {
+  text-align: left;
+  padding: 0.55rem 0.75rem 0.55rem 0;
+  border-bottom: 1px solid var(--rule);
+  vertical-align: top;
+}
+
+thead th {
+  font-weight: 650;
+  font-stretch: 85%;
+  border-bottom: 2px solid var(--rule-strong);
+}
+
+td.num,
+th.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- reduced motion ------------------------------------------------------ */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+@media print {
+  .no-print,
+  .ad-slot {
+    display: none !important;
+  }
+}

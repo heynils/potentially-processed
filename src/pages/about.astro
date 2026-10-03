@@ -1,0 +1,108 @@
+---
+import Base from '../layouts/Base.astro';
+import { categories, formatNumber, href, markers, meta, products } from '../lib/data.ts';
+import { SITE } from '../lib/site.ts';
+
+const f = meta.funnel;
+const rejected = (key: string) => formatNumber(f.rejected[key] ?? 0);
+const exportDate = meta.exportDate
+  ? new Date(meta.exportDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
+  : null;
+---
+
+<Base
+  title="About the data and how this site works"
+  description={`Where the NOVA groups on ${SITE.name} come from, how the ${formatNumber(products.length)} products were chosen, and what the data can and cannot tell you.`}
+>
+  <article class="prose">
+    <h1>About the data</h1>
+    <p class="lede">
+      {SITE.name} is a static reference site. It does not make its own judgements about food: every NOVA group,
+      ingredient list and category comes from Open Food Facts, and this site explains and compares them.
+    </p>
+
+    <h2>Where the data comes from</h2>
+    <p>
+      <a href="https://world.openfoodfacts.org/">Open Food Facts</a> is a non-profit, collaborative database of food
+      products from around the world, built by volunteers who scan barcodes and photograph labels. It is published under
+      the <a href="https://opendatacommons.org/licenses/odbl/1-0/">Open Database License (ODbL)</a>, which allows reuse
+      with attribution. Product photos belong to their contributors and are licensed under
+      <a href="https://creativecommons.org/licenses/by-sa/3.0/">CC BY-SA 3.0</a>.
+    </p>
+    <p>
+      Each product page links to the product's entry on Open Food Facts. If something is wrong or out of date, correcting
+      it there fixes it for everyone, including this site at its next update.
+    </p>
+
+    <h2>How the products were chosen</h2>
+    <p>
+      The site is rebuilt from the full Open Food Facts export{exportDate ? `; this version uses the export of ${exportDate}` : ''}.
+      A product is included only if it has everything needed for a useful page:
+    </p>
+    <div class="table-scroll">
+      <table>
+        <caption class="visually-hidden">How many products passed each step</caption>
+        <tbody>
+          <tr><th scope="row">Products in the export</th><td class="num">{formatNumber(f.linesRead)}</td></tr>
+          <tr><th scope="row">No NOVA group computed</th><td class="num">−{rejected('no-nova-group')}</td></tr>
+          <tr><th scope="row">Label not in English</th><td class="num">−{rejected('not-english')}</td></tr>
+          <tr><th scope="row">No category</th><td class="num">−{rejected('no-category')}</td></tr>
+          <tr><th scope="row">No usable product name</th><td class="num">−{rejected('no-name')}</td></tr>
+          <tr><th scope="row">No parsed ingredient list</th><td class="num">−{rejected('no-ingredients')}</td></tr>
+          <tr><th scope="row">Other problems (withdrawn products, invalid barcodes, unreadable records)</th><td class="num">−{formatNumber((f.rejected['obsolete'] ?? 0) + (f.rejected['bad-code'] ?? 0) + f.parseErrors)}</td></tr>
+          <tr class="total"><th scope="row">Eligible products</th><td class="num">{formatNumber(f.eligible)}</td></tr>
+          <tr><th scope="row">Most-scanned eligible products considered</th><td class="num">{formatNumber(f.pooled)}</td></tr>
+          <tr><th scope="row">After merging duplicates (same brand and name)</th><td class="num">{formatNumber(f.afterDedupe)}</td></tr>
+          <tr class="total"><th scope="row">Products on this site</th><td class="num">{formatNumber(f.selected)}</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>
+      Products are ranked by how many people have scanned them with the Open Food Facts app recently, so the site covers
+      the foods people actually look up. Of the {formatNumber(f.selected)} products, {formatNumber(f.selectedForBalance)} were
+      added specifically because they are less processed than a popular product in the same category. Without them,
+      many popular products would have no alternative to point to.
+    </p>
+    <p>
+      The site also has {formatNumber(categories.length)} category pages, for categories with enough products to
+      compare, and {formatNumber(markers.length)} pages on individual ingredients and additives.
+    </p>
+
+    <h2>What the NOVA group means here</h2>
+    <p>
+      NOVA groups are computed automatically by Open Food Facts from crowdsourced data, so they are estimates. A missing
+      ingredient, a typo or an outdated recipe can put a product in the wrong group. Read the
+      <a href={href('what-is-nova/')}>explanation of NOVA</a> for how the groups are defined and what they do and do not
+      tell you.
+    </p>
+    <p>
+      Rankings within a category ("least processed first") are our own: products are sorted by NOVA group, then by the
+      number of ultra-processing markers, then by the number of additives and ingredients. That order is a convenience
+      for comparison, not a health score.
+    </p>
+
+    <h2>Health disclaimer</h2>
+    <p>
+      This site provides general information about food processing. It is not medical, nutritional or dietary advice and
+      should not replace advice from a doctor, dietitian or other qualified professional. Always read the label on the
+      product itself, especially if you have an allergy or intolerance.
+    </p>
+
+    <h2>Advertising</h2>
+    <p>
+      This site may show advertising to cover its costs. Advertisers have no influence over which products appear or how
+      they are described.
+    </p>
+  </article>
+</Base>
+
+<style>
+  table {
+    max-width: 40rem;
+  }
+  tr.total th,
+  tr.total td {
+    font-weight: 700;
+    border-top: 2px solid var(--rule-strong);
+  }
+</style>
