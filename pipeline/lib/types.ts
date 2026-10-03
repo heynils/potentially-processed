@@ -38,6 +38,8 @@ export interface ProductImage {
 /** Output of the extract stage: a slimmed-down, validated OFF product. */
 export interface Candidate {
   code: string;
+  /** Language of the name and ingredient list, as shown: "en" or "sv" (config LANGUAGES). */
+  lang: string;
   name: string;
   brand: string | null;
   quantity: string | null;
@@ -48,7 +50,7 @@ export interface Candidate {
   additives: string[]; // e.g. ["en:e322", "en:e471"]
   categories: string[]; // OFF categories_hierarchy, English tags only, generic -> specific
   comparedTo: string | null; // OFF's own choice of most specific comparison category
-  countries: string[];
+  countries: string[]; // OFF countries_tags: where it is sold, e.g. ["en:sweden"]
   nutriscore: 'a' | 'b' | 'c' | 'd' | 'e' | null;
   image: ProductImage | null;
   popularity: number; // OFF popularity_key: year of latest scan stats, a per-country percentile tier, then scans
@@ -71,6 +73,8 @@ export interface SiteIngredient {
 export interface SiteProduct {
   code: string;
   slug: string;
+  /** Language of `name`, `ingredientsText` and the ingredient texts; the site's own text is English. */
+  lang: string;
   name: string;
   brand: string | null;
   quantity: string | null;
@@ -146,6 +150,8 @@ export interface Funnel {
   afterDedupe: number;
   selected: number;
   selectedForBalance: number;
+  /** Per quota market (config MARKET_QUOTAS): its places, eligible products in the export, and products on the site. */
+  markets: { name: string; countries: string[]; languages: string[]; max: number; eligible: number; selected: number }[];
 }
 
 export interface SiteMeta {
@@ -156,6 +162,8 @@ export interface SiteMeta {
   generatedAt: string;
   funnel: Funnel;
   novaCounts: Record<NovaGroup, number>;
+  /** The countries the site serves (config PRIORITY_COUNTRIES) and how many products are sold in each, most first. */
+  countries: { tag: string; products: number }[];
   /** How the product set compares with what the live site published before this build. */
   continuity: { published: number; kept: number; renamed: number; dropped: number };
 }

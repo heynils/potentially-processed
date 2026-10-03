@@ -12,7 +12,7 @@ interface Props {
   current?: NovaGroup;
   /** A thin bar without numbers or legend, for lists; the caller supplies the text equivalent. */
   mini?: boolean;
-  /** Show the legend under the bar. When hidden it is still read by screen readers. */
+  /** Show the legend under the bar. Without it the bar is decorative: the caller supplies the numbers in text. */
   legend?: boolean;
 }
 
@@ -37,16 +37,18 @@ const groups = ([1, 2, 3, 4] as NovaGroup[]).filter((g) => counts[g] > 0);
           </span>
         ))}
       </div>
-      <figcaption class:list={{ 'visually-hidden': !legend }}>
-        <ul>
-          {groups.map((g) => (
-            <li>
-              <span class:list={['key', `seg-${g}`]} aria-hidden="true" />
-              Group {g}, {NOVA[g].short}: {formatNumber(counts[g])} ({percent(counts[g], total)}%)
-            </li>
-          ))}
-        </ul>
-      </figcaption>
+      {legend && (
+        <figcaption>
+          <ul>
+            {groups.map((g) => (
+              <li>
+                <span class:list={['key', `seg-${g}`]} aria-hidden="true" />
+                Group {g}, {NOVA[g].short}: {formatNumber(counts[g])} ({percent(counts[g], total)}%)
+              </li>
+            ))}
+          </ul>
+        </figcaption>
+      )}
     </figure>
   )
 }

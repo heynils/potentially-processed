@@ -12,7 +12,9 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { parseArgs } from 'node:util';
 import { gzipSync } from 'node:zlib';
-import { SITE_DATA_DIR, WORK_DIR } from './config.ts';
+import { LANGUAGES, MARKET_QUOTAS, SITE_DATA_DIR, WORK_DIR } from './config.ts';
+import { inMarket } from './lib/markets.ts';
+import { ingredientsLanguage } from './lib/normalize.ts';
 import { openInput, splitLines } from './lib/stream.ts';
 import type { SiteCategory, SiteProduct } from './lib/types.ts';
 import type { TaxonomyEntry } from './lib/taxonomy.ts';
@@ -37,24 +39,28 @@ const CATEGORIES = [
   'en:biscuits',
 ];
 const PER_CATEGORY = 40;
+/** Extra products per category from each quota market (Sweden), so the sample covers them too. */
+const PER_CATEGORY_MARKET = 8;
 const REJECTS_PER_REASON = 4;
 
 // Everything normalize() reads, plus the fields shown in the funnel.
 const KEEP = [
   'code',
   'lang',
+  'ingredients_lc',
   'obsolete',
   'product_name',
-  'product_name_en',
+  ...[...LANGUAGES].map((l) => `product_name_${l}`),
   'brands',
   'quantity',
   'nova_group',
   'nova_groups_markers',
   'ingredients_text',
-  'ingredients_text_en',
+  ...[...LANGUAGES].map((l) => `ingredients_text_${l}`),
   'ingredients',
   'additives_tags',
   'categories_hierarchy',
+  'categories_tags',
   'compared_to_category',
   'countries_tags',
   'nutriscore_grade',
@@ -111,6 +117,11 @@ for (const tag of CATEGORIES) {
     if (j !== i) picked.push(c.codes[j]);
   }
   for (const code of picked) wanted.add(code);
+  for (const m of MARKET_QUOTAS) {
+    const local = c.codes.filter((code) => byCode.has(code) && inMarket(m, byCode.get(code)!));
+    for (const code of local.slice(0, PER_CATEGORY_MARKET / 2)) wanted.add(code);
+    for (const code of local.slice(-PER_CATEGORY_MARKET / 2)) wanted.add(code);
+  }
 }
 // Pull in the alternatives these products point to, so their pages are complete.
 for (const code of [...wanted]) for (const alt of byCode.get(code)?.alternatives.codes ?? []) wanted.add(alt);
@@ -140,7 +151,7 @@ for await (const line of splitLines(await openInput(args.export))) {
     found.add(code);
   }
   else {
-    const reason = !raw.nova_group ? 'no-nova' : raw.lang !== 'en' ? 'not-en' : 'other';
+    const reason = !raw.nova_group ? 'no-nova' : !LANGUAGES.has(ingredientsLanguage(raw)) ? 'other-language' : 'other';
     if ((rejects.get(reason) ?? 0) < REJECTS_PER_REASON) {
       rejects.set(reason, (rejects.get(reason) ?? 0) + 1);
       kept.push(trim(raw));

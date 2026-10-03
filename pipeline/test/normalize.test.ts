@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { barcodePath, compareRank, frontImage, normalize, parseMarkers, parseNova, scanYear, tidyName } from '../lib/normalize.ts';
 import { candidate } from './helpers.ts';
 
+const LANGUAGES = new Set(['en', 'sv']);
+
 // Trimmed from a real record in the OFF export (fields as they appear there).
 const raw = () => ({
   code: '0000159487776',
@@ -33,9 +35,10 @@ const raw = () => ({
 });
 
 test('normalizes a real-shaped record', () => {
-  const r = normalize(raw());
+  const r = normalize(raw(), LANGUAGES);
   assert.ok(r.ok);
   const c = r.candidate;
+  assert.equal(c.lang, 'en');
   assert.equal(c.name, 'Magic Stars Chocolates');
   assert.equal(c.brand, 'Cadbury');
   assert.equal(c.nova, 4);
@@ -53,18 +56,74 @@ test('normalizes a real-shaped record', () => {
 test('rejects records with a reason', () => {
   const cases: [Record<string, unknown>, string][] = [
     [{ nova_group: null }, 'no-nova-group'],
-    [{ lang: 'fr' }, 'not-english'],
+    [{ lang: 'fr' }, 'other-language'],
+    [{ ingredients_lc: 'fr' }, 'other-language'],
     [{ obsolete: 'on' }, 'obsolete'],
     [{ code: '12ab' }, 'bad-code'],
     [{ product_name: '', product_name_en: '' }, 'no-name'],
     [{ ingredients: [] }, 'no-ingredients'],
-    [{ categories_hierarchy: ['en:null'] }, 'no-category'],
   ];
   for (const [patch, reason] of cases) {
-    const r = normalize({ ...raw(), ...patch });
+    const r = normalize({ ...raw(), ...patch }, LANGUAGES);
     assert.equal(r.ok, false);
     assert.equal(!r.ok && r.reason, reason);
   }
+});
+
+// Shaped like real Swedish records in the export (ICA, Sweet Baby Ray's, Clif Bar).
+test('takes name and ingredients in the language OFF parsed the ingredients in', () => {
+  const swedish = normalize(
+    {
+      ...raw(),
+      lang: 'sv',
+      ingredients_lc: 'sv',
+      product_name: 'ÄPPELMOS',
+      product_name_sv: 'ÄPPELMOS',
+      product_name_en: 'Apple sauce',
+      ingredients_text_sv: 'Äpple 90%, socker',
+      ingredients_text_en: 'Apple 90%, sugar',
+      countries_tags: ['en:sweden'],
+      images: { front_sv: { rev: '7', sizes: { '400': { w: 300, h: 400 } } }, front_en: { rev: '2', sizes: { '400': { w: 300, h: 400 } } } },
+    },
+    LANGUAGES,
+  );
+  assert.ok(swedish.ok);
+  assert.equal(swedish.candidate.lang, 'sv');
+  assert.equal(swedish.candidate.name, 'Äppelmos', 'Swedish name, all-caps tamed');
+  assert.equal(swedish.candidate.ingredientsText, 'Äpple 90%, socker');
+  assert.ok(swedish.candidate.image?.url.includes('/front_sv.7.'), 'Swedish pack photo');
+
+  // English ingredients parsed on a German-labelled product: shown in English.
+  const german = normalize(
+    { ...raw(), lang: 'de', ingredients_lc: 'en', product_name: 'Erdnussbutter', product_name_en: 'Crunchy Peanut Butter' },
+    LANGUAGES,
+  );
+  assert.ok(german.ok);
+  assert.equal(german.candidate.lang, 'en');
+  assert.equal(german.candidate.name, 'Crunchy Peanut Butter');
+
+  // The pack's main-language name is only used when it is in the shown language.
+  const noEnglishName = normalize({ ...raw(), lang: 'de', ingredients_lc: 'en', product_name: 'Erdnussbutter', product_name_en: '' }, LANGUAGES);
+  assert.equal(!noEnglishName.ok && noEnglishName.reason, 'no-name');
+
+  // English label, but OFF parsed the French ingredient list: the tree would be French.
+  const frenchTree = normalize({ ...raw(), ingredients_lc: 'fr' }, LANGUAGES);
+  assert.equal(!frenchTree.ok && frenchTree.reason, 'other-language');
+  assert.equal(normalize(raw(), new Set(['en'])).ok, true);
+  assert.equal(normalize({ ...raw(), lang: 'sv', ingredients_lc: 'sv', product_name_sv: 'Kaviar' }, new Set(['en'])).ok, false);
+});
+
+test('a product without a category is valid; the pool decides whether it is wanted', () => {
+  const r = normalize({ ...raw(), categories_hierarchy: ['en:null', 'sv:okänd'] }, LANGUAGES);
+  assert.ok(r.ok);
+  assert.deepEqual(r.candidate.categories, []);
+});
+
+test('categories fall back to categories_tags when the hierarchy is empty', () => {
+  // Pågen Gifflar and Bregott look like this in the export.
+  const r = normalize({ ...raw(), categories_hierarchy: [], categories_tags: ['en:snacks', 'en:sweet-snacks', 'sv:gifflar', 'en:biscuits'] }, LANGUAGES);
+  assert.ok(r.ok);
+  assert.deepEqual(r.candidate.categories, ['en:snacks', 'en:sweet-snacks', 'en:biscuits']);
 });
 
 test('parseNova accepts ints and numeric strings only in 1..4', () => {
@@ -97,6 +156,8 @@ test('frontImage handles the legacy and the newer images schema', () => {
 test('tidyName only touches all-caps names', () => {
   assert.equal(tidyName('CHAMOMILE HERBAL TEA'), 'Chamomile Herbal Tea');
   assert.equal(tidyName("Lagg's, herbal tea"), "Lagg's, herbal tea");
+  assert.equal(tidyName('SMÖRGÅSGURKA ÖRTER'), 'Smörgåsgurka Örter');
+  assert.equal(tidyName('Kalles Kaviar'), 'Kalles Kaviar');
 });
 
 test('ranking: recent scan year first, then distinct scanners', () => {

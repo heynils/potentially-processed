@@ -1,6 +1,6 @@
 # Development sample
 
-`sample.jsonl.gz` holds about 300 real product records from the Open Food Facts
+`sample.jsonl.gz` holds about 600 real product records from the Open Food Facts
 export, trimmed to the fields the pipeline reads, plus a few records the filters
 should reject. `taxonomies/` holds the four OFF taxonomies trimmed to the tags
 those records use. `npm run data:sample` builds a small but realistic site from

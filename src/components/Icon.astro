@@ -1,16 +1,9 @@
 ---
-// Inline SVG icons from Lucide (https://lucide.dev, ISC licence, via the
-// lucide-static package). They are read at build time, so a page carries
-// only the few icons it uses: no icon font, no JavaScript, no extra request.
-// Icons inherit the text colour (stroke="currentColor").
-import apple from 'lucide-static/icons/apple.svg?raw';
-import can from 'lucide-static/icons/can.svg?raw';
-import chefHat from 'lucide-static/icons/chef-hat.svg?raw';
-import factory from 'lucide-static/icons/factory.svg?raw';
-import share from 'lucide-static/icons/share-2.svg?raw';
-
-const ICONS = { apple, can, 'chef-hat': chefHat, factory, share } as const;
-export type IconName = keyof typeof ICONS;
+// A Lucide icon from the shared sprite (see src/lib/icons.ts). It takes the
+// text colour; width and height are set here, so nothing shifts while the
+// sprite loads.
+import { href } from '../lib/data.ts';
+import type { IconName } from '../lib/icons.ts';
 
 interface Props {
   name: IconName;
@@ -20,17 +13,14 @@ interface Props {
   label?: string;
 }
 
-const { name, size = 24, class: className = '', label } = Astro.props;
-const a11y = label ? `role="img" aria-label="${label.replace(/"/g, '&quot;')}"` : 'aria-hidden="true" focusable="false"';
-const svg = ICONS[name]
-  .replace(/<!--[\s\S]*?-->/g, '')
-  .replace(/\s*class="[^"]*"/, '')
-  .replace('width="24"', `width="${size}"`)
-  .replace('height="24"', `height="${size}"`)
-  .replace('<svg', `<svg class="icon ${className}" ${a11y}`)
-  .replace(/\s+/g, ' ')
-  .replace(/>\s+</g, '><')
-  .trim();
+const { name, size = 24, class: className, label } = Astro.props;
 ---
 
-<Fragment set:html={svg} />
+<svg
+  class:list={['icon', className]}
+  width={size}
+  height={size}
+  role={label ? 'img' : undefined}
+  aria-label={label}
+  aria-hidden={label ? undefined : 'true'}><use href={`${href('icons.svg')}#${name}`} /></svg
+>

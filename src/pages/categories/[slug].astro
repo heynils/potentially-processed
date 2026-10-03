@@ -12,6 +12,7 @@ import {
   categoryByTag,
   categoryHref,
   categoryImage,
+  formatNumber,
   getProducts,
   imageAt,
   href,
@@ -21,6 +22,7 @@ import {
   markerLabel,
   percent,
   productHref,
+  textLang,
 } from '../../lib/data.ts';
 import { NOVA } from '../../lib/nova.ts';
 
@@ -30,27 +32,30 @@ interface Props {
   category: SiteCategory;
 }
 
-// Very large categories list only the least processed products, to keep
-// pages light; the rest are reachable through subcategories and search.
-const MAX_LISTED = 200;
+// Big categories list the least processed products of each NOVA group, so
+// every group is represented and pages stay light (the site has to fit in
+// GitHub Pages' 1 GB). The rest are reachable through narrower categories,
+// search, and each product page's neighbours in the ranking.
+const PER_GROUP = 40;
 
 const { category: c } = Astro.props;
 const name = lowerFirst(c.name);
-const listed = getProducts(c.codes.slice(0, MAX_LISTED));
 const ultra = percent(c.novaCounts[4], c.count);
-const leastProcessed = listed[0];
 const thumb = categoryImage(c);
-const summary = `We track ${c.count} ${name}, ${ultra}% of them ultra-processed.`;
+const summary = `We track ${formatNumber(c.count)} ${name}, ${ultra}% of them ultra-processed.`;
 
-// The ranked list, split into one section per NOVA group (codes are already
-// sorted least processed first, so each group is a contiguous run).
+// The ranked list, one section per NOVA group: codes are sorted least
+// processed first, so each group is a contiguous run.
+let offset = 0;
 const sections = ([1, 2, 3, 4] as NovaGroup[])
   .map((g) => {
-    const items = listed.filter((p) => p.nova === g);
-    const start = listed.findIndex((p) => p.nova === g) + 1;
-    return { group: g, items, start, total: c.novaCounts[g] };
+    const start = offset + 1;
+    offset += c.novaCounts[g];
+    return { group: g, items: getProducts(c.codes.slice(start - 1, start - 1 + Math.min(PER_GROUP, c.novaCounts[g]))), start, total: c.novaCounts[g] };
   })
   .filter((sct) => sct.items.length > 0);
+const listed = sections.flatMap((sct) => sct.items.map((p, i) => ({ p, rank: sct.start + i })));
+const leastProcessed = listed[0]?.p;
 const chain: SiteCategory[] = [];
 for (let t = c.parent; t; t = categoryByTag.get(t)!.parent) chain.unshift(categoryByTag.get(t)!);
 const children = c.children.map((t) => categoryByTag.get(t)!);
@@ -62,7 +67,7 @@ const breadcrumbItems = [
   { name: c.name },
 ];
 
-const description = `${ultra}% of the ${c.count} ${name} we track are ultra-processed (NOVA group 4). See them ranked from least to most processed, and the additives that come up most often.`;
+const description = `${ultra}% of the ${formatNumber(c.count)} ${name} we track are ultra-processed (NOVA group 4). See them ranked from least to most processed, and the additives that come up most often.`;
 
 const jsonLd = [
   {
@@ -80,10 +85,10 @@ const jsonLd = [
     '@type': 'ItemList',
     name: `${c.name}, least processed first`,
     itemListOrder: 'https://schema.org/ItemListOrderAscending',
-    numberOfItems: listed.length,
-    itemListElement: listed.slice(0, 50).map((p, i) => ({
+    numberOfItems: c.count,
+    itemListElement: listed.slice(0, 50).map(({ p, rank }) => ({
       '@type': 'ListItem',
-      position: i + 1,
+      position: rank,
       url: new URL(productHref(p), Astro.site).href,
       name: p.name,
     })),
@@ -91,7 +96,7 @@ const jsonLd = [
 ];
 ---
 
-<Base title={`Least processed ${name}: ${c.count} products ranked`} description={description} jsonLd={jsonLd}>
+<Base title={`Least processed ${name}: ${formatNumber(c.count)} products ranked`} description={description} jsonLd={jsonLd}>
   <Breadcrumbs items={breadcrumbItems} />
   <div data-pagefind-body>
     <span hidden data-pagefind-ignore data-pagefind-meta="kind">Category</span>
@@ -102,7 +107,7 @@ const jsonLd = [
     </h1>
     <p class="lede" data-pagefind-ignore>
       {summary}
-      {leastProcessed && <>The least processed is <a href={productHref(leastProcessed)}>{leastProcessed.name}</a>.</>}
+      {leastProcessed && <>The least processed is <a href={productHref(leastProcessed)} lang={textLang(leastProcessed)}>{leastProcessed.name}</a>.</>}
     </p>
   </div>
 
@@ -131,7 +136,7 @@ const jsonLd = [
           {children.map((x) => (
             <li>
               <a href={categoryHref(x)}>
-                {x.name} <span class="count">{x.count}</span>
+                {x.name} <span class="count">{formatNumber(x.count)}</span>
               </a>
             </li>
           ))}
@@ -177,7 +182,8 @@ const jsonLd = [
         <ProductList products={sct.items} ordered start={sct.start} />
         {sct.items.length < sct.total && (
           <p class="meta">
-            Showing the first {sct.items.length} of {sct.total}. The narrower categories above, or search, find the rest.
+            Showing the first {sct.items.length} of {formatNumber(sct.total)}. The narrower categories above, or search, find
+            the rest.
           </p>
         )}
       </section>

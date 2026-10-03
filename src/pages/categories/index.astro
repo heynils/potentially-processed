@@ -1,7 +1,7 @@
 ---
 import type { SiteCategory } from '../../../pipeline/lib/types.ts';
 import Base from '../../layouts/Base.astro';
-import { categories, categoryByTag, categoryHref, href, percent } from '../../lib/data.ts';
+import { categories, categoryByTag, categoryHref, formatNumber, href, percent } from '../../lib/data.ts';
 
 // Top-level entries are categories with no parent page; each shows its tree.
 const roots = categories.filter((c) => !c.parent).sort((a, b) => a.name.localeCompare(b.name));
@@ -22,17 +22,17 @@ const kids = (c: SiteCategory) => c.children.map((t) => categoryByTag.get(t)!).s
     {
       roots.map((c) => (
         <li>
-          <a href={categoryHref(c)}>{c.name}</a> <span class="meta">{c.count} products, {percent(c.novaCounts[4], c.count)}% ultra-processed</span>
+          <a href={categoryHref(c)}>{c.name}</a> <span class="meta">{formatNumber(c.count)} products, {percent(c.novaCounts[4], c.count)}% ultra-processed</span>
           {c.children.length > 0 && (
             <ul>
               {kids(c).map((k) => (
                 <li>
-                  <a href={categoryHref(k)}>{k.name}</a> <span class="meta">{k.count}, {percent(k.novaCounts[4], k.count)}%</span>
+                  <a href={categoryHref(k)}>{k.name}</a> <span class="meta">{formatNumber(k.count)}, {percent(k.novaCounts[4], k.count)}%</span>
                   {k.children.length > 0 && (
                     <ul>
                       {kids(k).map((g) => (
                         <li>
-                          <a href={categoryHref(g)}>{g.name}</a> <span class="meta">{g.count}, {percent(g.novaCounts[4], g.count)}%</span>
+                          <a href={categoryHref(g)}>{g.name}</a> <span class="meta">{formatNumber(g.count)}, {percent(g.novaCounts[4], g.count)}%</span>
                         </li>
                       ))}
                     </ul>

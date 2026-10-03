@@ -4,6 +4,7 @@ import { Taxonomy, type Taxonomies } from '../lib/taxonomy.ts';
 /** A minimal Candidate; override what a test cares about. */
 export function candidate(overrides: Partial<Candidate> & { code: string }): Candidate {
   return {
+    lang: 'en',
     name: `Product ${overrides.code}`,
     brand: 'Brand',
     quantity: null,

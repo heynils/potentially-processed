@@ -7,9 +7,13 @@ pages rank products from least to most processed, and ingredient and additive
 pages explain what each marker is and where it turns up.
 
 There is no backend. A data pipeline turns the Open Food Facts export into
-JSON, Astro renders roughly 5,600 static pages from it, and Pagefind adds a
+JSON, Astro renders about 42,000 static pages from it, and Pagefind adds a
 search index that runs in the browser. A scheduled GitHub Actions workflow
 rebuilds and redeploys everything weekly.
+
+The site is written in English and covers products sold in English-speaking
+countries and in Sweden. Swedish products keep their Swedish names and
+ingredient lists, as printed on the pack.
 
 - [How it works](#how-it-works)
 - [The data pipeline](#the-data-pipeline)
@@ -36,16 +40,16 @@ classification and compares products with each other.
 
 ```
 OFF JSONL export (13 GB gzip, ~4.8M products)
-        │  stream, filter, rank            pipeline/extract.ts   ~10 min
+        │  stream, filter, rank            pipeline/extract.ts   ~8-11 min
         ▼
-data/work/candidates.jsonl (60k most popular eligible products)
-        │  dedupe, balance, categorise,    pipeline/select.ts    ~3 s
+data/work/candidates.jsonl (150k: all Swedish, then the most popular)
+        │  dedupe, balance, categorise,    pipeline/select.ts    ~9 s
         │  match markers, find alternatives
         ▼
-data/site/*.json (5,000 products, ~430 categories, ~115 markers)
-        │  astro build + pagefind          npm run build         ~20 s
+data/site/*.json (40,000 products, ~1,400 categories, ~320 markers)
+        │  astro build + compact + pagefind  npm run build       ~2.5 min
         ▼
-dist/ (static HTML + search index) → GitHub Pages
+dist/ (~42k static pages + search index, ~910 MB) → GitHub Pages
 ```
 
 ## The data pipeline
@@ -65,22 +69,29 @@ time.
 Three techniques keep this fast and memory-flat:
 
 1. **Byte-level pre-filtering.** Most products can't qualify because they
-   have no NOVA group or aren't labelled in English. Each line is checked for
-   the raw bytes `"nova_group":` and `"lang":"en"` *before* it is decoded or
-   parsed. That skips `JSON.parse` for about 80% of lines, and the result is
-   identical because those lines would fail the real check anyway.
+   have no NOVA group or no ingredient list in a language the site shows
+   (English or Swedish). Each line is checked for the raw bytes
+   `"nova_group":` and a language marker such as `"ingredients_lc":"sv"`
+   *before* it is decoded or parsed. That skips `JSON.parse` for about 80% of
+   lines, and the result is identical because those lines would fail the
+   real check anyway.
 2. **Validation into a slim record** (`lib/normalize.ts`). A product passes
-   only if it has a NOVA group, an English label, a usable name, a parsed
-   ingredient tree and at least one category. It is reduced to about 2 KB:
-   name, brand, NOVA group, markers, ingredient tree, additives, categories,
-   image URL and popularity. Rejected products are counted by reason, and
-   those counts are published on the About page.
+   only if it has a NOVA group, a usable name and a parsed ingredient tree,
+   all in English or Swedish. The language that counts is `ingredients_lc`,
+   the one OFF parsed the ingredient list in, because that is the language of
+   the tree the page highlights; it can differ from the pack's main language
+   (`lang`). The product is reduced to about 2 KB: name, brand, NOVA group,
+   markers, ingredient tree, additives, categories, image URL and
+   popularity. Rejected products are counted by reason, and those counts are
+   published on the About page.
 3. **A bounded top-K heap** (`lib/top-k.ts`). A **min-heap** is a tree in
    which every parent is "smaller" than its children, so the root is always
-   the smallest element. Keeping the 60,000 most popular products in a
-   min-heap ordered by popularity puts the *least* popular kept product at
-   the root. A new product only needs to beat the root to get in, which costs
-   O(log k). Memory stays at 60,000 records no matter how big the export is.
+   the smallest element. Keeping the 150,000 best products in a min-heap
+   puts the *worst* kept product at the root. A new product only needs to
+   beat the root to get in, which costs O(log k). Memory stays at 150,000
+   records no matter how big the export is. "Best" means: every product of a
+   quota market (Sweden, see below) first, then products sold in the
+   countries the site serves, each group ordered by popularity.
 
 **Popularity** needed care. OFF's `popularity_key` looks like a single
 number, but it is composite: a two-digit year, then a percentile tier
@@ -96,15 +107,24 @@ run if far fewer products arrive than expected.
 
 ### Stage 2: select (`pipeline/select.ts`, logic in `lib/build.ts`)
 
-This stage works on the 60,000 candidates in memory and produces everything
+This stage works on the 150,000 candidates in memory and produces everything
 the site renders.
 
-- **Market first.** The site is in English, but Open Food Facts is global.
-  Morocco and India, for example, have many heavily scanned products with
-  English labels. Products sold in the UK, US, Ireland, Canada, Australia or
-  New Zealand therefore rank ahead of the rest, and popularity orders each
-  group. This is a single setting, `PRIORITY_COUNTRIES` in `config.ts`; an
-  empty set ranks by popularity alone.
+- **Market first.** Open Food Facts is global, and Morocco and India, for
+  example, have many heavily scanned products with English labels. Products
+  sold in the countries the site serves (the UK, US, Ireland, Canada,
+  Australia, New Zealand and Sweden: `PRIORITY_COUNTRIES` in `config.ts`)
+  therefore rank ahead of the rest, and popularity orders each group.
+- **Quota markets.** Swedish products are scanned far less often than
+  British or American ones: only a few dozen have recent scan statistics.
+  Ranked on popularity, almost none would make the cut. Sweden is therefore a
+  *quota market* (`MARKET_QUOTAS`): up to 20,000 products sold there or
+  labelled in Swedish are selected first, which in practice is all of them.
+  Unlike everywhere else, they don't need a category, since a third of the
+  eligible Swedish products have none; their pages simply have no
+  alternatives or ranking. The bottleneck is the data itself: of about 31,000
+  Swedish products on Open Food Facts, 70% have no ingredient list, so no
+  NOVA group.
 - **Plausibility.** A few crowdsourced ingredient lists are truncated to one
   entry, such as a fat-free mayonnaise whose whole list reads "water". Such a
   product would look minimally processed and get recommended as an
@@ -116,7 +136,7 @@ the site renders.
   sizes, regional prints). The pipeline keeps the most popular barcode per
   brand and name, because near-duplicate pages are what search engines
   penalise as thin content.
-- **Balanced selection.** Taking the top 5,000 by popularity would leave
+- **Balanced selection.** Taking the top products by popularity would leave
   many popular ultra-processed products with nothing less processed to point
   to, because plain foods get scanned less. So 80% of the slots go to the
   most popular products. The pipeline then walks those in order and, wherever
@@ -141,7 +161,9 @@ the site renders.
   first: by NOVA group, then by the number of group-4 markers, additives and
   ingredients. Each product's alternatives are the most popular lower-group
   products from its most specific category page, falling back to the parent
-  category.
+  category. Alternatives sold in the same country come first, because an
+  alternative you can't buy doesn't help: a Swedish ketchup is offered
+  Swedish ketchups before British ones.
 - **Additives that aren't markers.** People ask "is citric acid
   ultra-processed?" as often as "is maltodextrin?", and "no" is a useful
   answer. Every additive in 5 or more products that OFF never lists as a
@@ -158,7 +180,7 @@ Search engines rank individual URLs, so a page that disappears loses the
 traffic it has earned, and every link pointing to it breaks. Two things
 would otherwise cause that every week:
 
-- **Re-ranking.** Products drift in and out of the top 5,000 as scan counts
+- **Re-ranking.** Products drift in and out of the selection as scan counts
   change, and the whole ranking can reshuffle when OFF rolls its scan
   statistics over to a new year.
 - **Renames.** Contributors edit product names, which changes the slug.
@@ -172,30 +194,38 @@ new URL, and Astro writes a redirect page at every old one. The redirect
 list is published at `/redirects.json` and read back by the next build, so
 redirects last as long as the product stays on the site, not just one week.
 
-### Numbers from the first real run (export of 3 October 2026)
+### Numbers from a real run (export of 3 October 2026)
 
 | Step | Products |
 | --- | ---: |
 | In the export | 4,789,632 |
 | No NOVA group | −3,623,565 |
-| Label not in English | −621,294 |
-| No category | −151,851 |
-| No usable name | −16,615 |
-| No parsed ingredients | −8,875 |
-| Invalid barcode | −282 |
-| **Eligible** | **367,150** |
-| Pool kept by extract | 60,000 |
-| Evidently truncated ingredient lists | −71 |
-| After merging duplicates | 57,166 |
-| **On the site** | **5,000** |
+| Ingredients not in English or Swedish | −620,079 |
+| No category (outside Sweden) | −72,140 |
+| No usable name | −17,440 |
+| No parsed ingredients | −8,919 |
+| Invalid barcode | −271 |
+| **Eligible** (6,142 of them Swedish) | **447,218** |
+| Pool kept by extract | 150,000 |
+| Evidently truncated ingredient lists | −152 |
+| After merging duplicates | 136,250 |
+| **On the site** (5,821 of them Swedish) | **40,000** |
 
-On the site, 759 products are in group 1, 195 in group 2, 1,587 in group 3
-and 2,459 in group 4. 90% of the products in groups 2 to 4 have at least one
-less-processed alternative, and 507 products were pulled in specifically to
-make that possible. There are 436 category pages and 111 ingredient and
-additive pages, plus 63 pages for common additives that aren't markers. The
-extract stage takes about 10 minutes on a
-4-core machine, and it is CPU-bound on JSON parsing, not on the download.
+On the site, 4,983 products are in group 1, 1,062 in group 2, 9,398 in group
+3 and 24,557 in group 4. 92% of the products in groups 2 to 4 have at least
+one less-processed alternative, and 759 products were pulled in specifically
+to make that possible. There are 1,384 category pages and 203 ingredient and
+additive pages, plus 120 pages for common additives that aren't markers.
+
+Two things in the export are easy to miss. `categories_hierarchy` is empty
+in many records whose `categories_tags` has the categories (a quarter of the
+Swedish ones, including Bregott and Pågen), so the pipeline falls back to
+the tags. And the pack's language (`lang`) isn't always the language of the
+ingredient list: the first version of this site showed 92 "English" products
+whose ingredient lists were in French or Spanish.
+
+The extract stage takes about 8 minutes on the Actions runner and 11 on a
+4-core laptop. It is CPU-bound on JSON parsing, not on the download.
 
 ## Local development
 
@@ -208,14 +238,14 @@ npm run dev           # http://localhost:4321
 ```
 
 The sample in `pipeline/fixtures/` is a trimmed extract of real OFF data:
-about 300 products from eight categories, plus taxonomies trimmed to the
-tags they use. Pages built from it show a "sample data" banner, and the
+about 600 products from eight categories, Swedish ones included, plus
+taxonomies trimmed to the tags they use. Pages built from it show a "sample data" banner, and the
 deploy workflow refuses to publish them.
 
 Other commands:
 
 ```sh
-npm run data       # full pipeline against the live export (~10 min, ~1 GB RAM, no disk)
+npm run data       # full pipeline against the live export (~11 min, ~2 GB RAM, no disk)
 npm run build      # static site + search index in dist/ (search doesn't work in dev)
 npm run preview    # serve dist/
 npm test           # pipeline unit tests (node:test)
@@ -236,9 +266,9 @@ descriptions, and `src/lib/nova.ts`, which holds the group definitions.
 `.github/workflows/deploy.yml` runs on every push to `main`, weekly on
 Mondays, and on demand.
 
-- The 10-minute extract runs only on the weekly schedule, when the extract
+- The 8-minute extract runs only on the weekly schedule, when the extract
   code changes, or when you tick *refresh data* on a manual run. Its output,
-  about 125 MB, is stored in the Actions cache. Every other run restores it
+  about 280 MB, is stored in the Actions cache. Every other run restores it
   and goes straight to the select stage and the build.
 - The base URL comes from `actions/configure-pages`, so the same build works
   at `https://<user>.github.io/<repo>/` and later on a custom domain at `/`.
@@ -260,9 +290,19 @@ One-time setup, which only the repository owner can do:
    workflow). Ad units appear only where both a client id and a slot id are
    set. Also add `public/ads.txt` with the line AdSense gives you.
 
-Limits worth knowing about GitHub Pages: sites can be up to 1 GB (this one is
-about 100 MB), a deployment times out after 10 minutes, and there is a soft
-bandwidth limit of 100 GB a month. The free plan needs a public repository.
+Limits worth knowing about GitHub Pages: sites can be up to 1 GB, a
+deployment times out after 10 minutes, and there is a soft bandwidth limit of
+100 GB a month (photos come from Open Food Facts, so they don't count).
+
+The 1 GB limit is what sets the number of products. A product page is about
+20 KB, so 40,000 products make a site of about 910 MB, leaving room for
+weekly changes and for the AdSense markup. To get there, the build
+post-processes every page (`src/integrations/compact-html.ts`): it strips
+indentation and renames Astro's scoped-style classes (`astro-1a2b3c4d`) to
+short ones, which makes pages about 25% smaller, and icons come from one
+shared sprite instead of being repeated in every page. The workflow reports
+the size of `dist` and refuses to deploy over 1 GB; if that ever trips, lower
+`TARGET_PRODUCTS` in `pipeline/config.ts`. The free plan needs a public repository.
 GitHub's terms say Pages isn't meant as free hosting for a commercial
 business. An ad-supported information site is a grey area, and moving to
 Cloudflare Pages is a DNS change.

@@ -6,7 +6,6 @@ import {
   dedupe,
   hasImplausibleIngredients,
   ingredientAncestors,
-  marketFirst,
   parsePublished,
   publishedFirst,
   selectProducts,
@@ -15,6 +14,7 @@ import {
   tidyBrand,
   type BuildOptions,
 } from '../lib/build.ts';
+import { inMarket, marketFirst, poolReject, quotaFirst, type MarketQuota } from '../lib/markets.ts';
 import { compareRank } from '../lib/normalize.ts';
 import { productSlug, slugify } from '../lib/slug.ts';
 import { candidate, testTaxonomies } from './helpers.ts';
@@ -22,6 +22,8 @@ import { candidate, testTaxonomies } from './helpers.ts';
 const opts: BuildOptions = {
   compare: compareRank,
   target: 10,
+  quotas: [],
+  marketCountries: new Set(['en:united-kingdom', 'en:sweden']),
   balanceShare: 0.2,
   minCategoryPage: 2,
   minMarkerPage: 1,
@@ -70,8 +72,11 @@ test('dedupe keeps the first of each brand + name', () => {
     candidate({ code: '1', name: 'Digestives', brand: "McVitie's" }),
     candidate({ code: '2', name: 'DIGESTIVES', brand: 'McVities' }),
     candidate({ code: '3', name: 'Digestives', brand: 'Tesco' }),
+    candidate({ code: '4', name: 'Mjölk', brand: 'Arla' }),
+    candidate({ code: '5', name: 'Mjolk', brand: 'Arla' }),
+    candidate({ code: '6', name: 'Mjöl', brand: 'Arla' }),
   ]);
-  assert.deepEqual(out.map((c) => c.code), ['1', '3']);
+  assert.deepEqual(out.map((c) => c.code), ['1', '3', '4', '6'], 'diacritics fold, but letters are not dropped');
 });
 
 test('selection pulls in less-processed products so popular ones have alternatives', () => {
@@ -89,6 +94,53 @@ test('selection pulls in less-processed products so popular ones have alternativ
   assert.equal(balanced, 2);
   assert.ok(codes.includes('plain') && codes.includes('simple'));
   assert.ok(!codes.includes('other'));
+});
+
+test('a quota market gets its places before the most popular rest', () => {
+  const tax = testTaxonomies();
+  const sweden: MarketQuota = { name: 'Sweden', countries: ['en:sweden'], languages: ['sv'], max: 3 };
+  const pool = [
+    ...Array.from({ length: 12 }, (_, i) => candidate({ code: `uk${i}`, scans: 1000 - i, nova: 1 })),
+    candidate({ code: 'se1', scans: 3, nova: 1, countries: ['en:sweden'] }),
+    candidate({ code: 'se2', scans: 2, nova: 1, lang: 'sv', countries: [] }),
+    candidate({ code: 'se3', scans: 1, nova: 1, countries: ['en:sweden', 'en:finland'] }),
+    candidate({ code: 'se4', scans: 0, nova: 1, countries: ['en:sweden'] }),
+  ];
+  const { selected } = selectProducts(pool, tax.categories, { ...opts, quotas: [sweden] });
+  const codes = selected.map((c) => c.code);
+  assert.equal(selected.length, 10);
+  assert.deepEqual(codes.filter((c) => c.startsWith('se')), ['se1', 'se2', 'se3'], 'up to max, most popular first');
+  assert.deepEqual(codes.slice(0, 3), ['uk0', 'uk1', 'uk2'], 'returned in popularity order');
+  assert.equal(inMarket(sweden, candidate({ code: 'x', lang: 'sv', countries: [] })), true, 'a Swedish label counts');
+
+  const uncategorised = { categories: [], countries: ['en:united-kingdom'], lang: 'en' };
+  assert.equal(poolReject(uncategorised, [sweden]), 'no-category');
+  assert.equal(poolReject({ ...uncategorised, countries: ['en:sweden'] }, [sweden]), null, 'a quota market takes it');
+  assert.equal(poolReject(pool[0], [sweden]), null);
+
+  const order = quotaFirst([sweden], compareRank);
+  assert.deepEqual([pool[0], pool[13]].sort(order).map((c) => c.code), ['se2', 'uk0'], 'extract keeps quota products first');
+});
+
+test('alternatives prefer products sold in the same country', () => {
+  const tax = testTaxonomies();
+  const se = ['en:sweden'];
+  const site = buildSite(
+    [
+      candidate({ code: 'uk-plain', nova: 1, scans: 900 }),
+      candidate({ code: 'uk-simple', nova: 3, scans: 800 }),
+      candidate({ code: 'se-choc', nova: 4, scans: 5, countries: se, categories: ['en:snacks', 'en:sweet-snacks', 'en:biscuits', 'en:chocolate-biscuits'] }),
+      candidate({ code: 'se-plain', nova: 1, scans: 4, countries: se }),
+      candidate({ code: 'se-simple', nova: 3, scans: 3, countries: se }),
+      candidate({ code: 'uk-choc', nova: 4, scans: 700, categories: ['en:snacks', 'en:sweet-snacks', 'en:biscuits', 'en:chocolate-biscuits'] }),
+    ],
+    tax,
+    opts,
+  );
+  const alternativesOf = (code: string) => site.products.find((p) => p.code === code)!.alternatives.codes;
+  assert.deepEqual(alternativesOf('se-choc'), ['se-plain', 'se-simple', 'uk-plain', 'uk-simple'], 'Swedish first, then the rest');
+  assert.deepEqual(alternativesOf('uk-choc'), ['uk-plain', 'uk-simple', 'se-plain', 'se-simple']);
+  assert.equal(site.products.find((p) => p.code === 'se-choc')!.lang, 'en');
 });
 
 test('buildSite: categories, ranking, alternatives and markers', () => {
@@ -196,6 +248,8 @@ test('tidyBrand fixes shouting and all-lowercase brands only', () => {
   assert.equal(tidyBrand('PHILADELPHIA'), 'Philadelphia');
   assert.equal(tidyBrand('oreo'), 'Oreo');
   assert.equal(tidyBrand('m&s'), 'M&S');
+  assert.equal(tidyBrand('änglamark'), 'Änglamark');
+  assert.equal(tidyBrand('ICA'), 'ICA', 'short acronyms stay');
   assert.equal(tidyBrand("McVitie's"), "McVitie's");
   assert.equal(tidyBrand(null), null);
 });

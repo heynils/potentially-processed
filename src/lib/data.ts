@@ -64,11 +64,17 @@ export const imageSrcset = (image: ProductImage): string =>
     .map((v) => `${v.url} ${v.width}w`)
     .join(', ');
 
+const popularityRank = new Map(products.map((p, i) => [p.code, i]));
+
 /** Photo of the most popular product in a category, to illustrate it in lists. */
 export function categoryImage(category: Pick<SiteCategory, 'codes'>): ProductImage | null {
-  const codes = new Set(category.codes);
   // `products` is ordered most popular first.
-  return products.find((p) => p.image && codes.has(p.code))?.image ?? null;
+  let best: SiteProduct | null = null;
+  for (const code of category.codes) {
+    const p = productByCode.get(code);
+    if (p?.image && (!best || popularityRank.get(p.code)! < popularityRank.get(best.code)!)) best = p;
+  }
+  return best?.image ?? null;
 }
 
 // --- Formatting -------------------------------------------------------------
@@ -108,6 +114,48 @@ export function humanize(tag: string): string {
 /** "Breakfast cereals" -> "breakfast cereals" for use mid-sentence, keeping acronyms and proper nouns. */
 export function lowerFirst(s: string): string {
   return /^[A-Z][a-z]/.test(s) ? s.charAt(0).toLowerCase() + s.slice(1) : s;
+}
+
+/**
+ * `lang` attribute for a product's own words (name, ingredient list) when
+ * they aren't English, so screen readers pronounce "Kalles Kaviar" in
+ * Swedish. The site's own text is English (<html lang="en">).
+ */
+export const textLang = (p: Pick<SiteProduct, 'lang'>): string | undefined => (p.lang !== 'en' ? p.lang : undefined);
+
+const languageNames = new Intl.DisplayNames(['en'], { type: 'language' });
+/** "sv" -> "Swedish" */
+export const languageName = (code: string): string => languageNames.of(code) ?? code;
+
+const SMALL_WORDS = new Set(['and', 'of', 'the']);
+
+/** "en:united-kingdom" -> "United Kingdom", "en:bosnia-and-herzegovina" -> "Bosnia and Herzegovina". */
+export const countryName = (tag: string): string =>
+  tag
+    .replace(/^[a-z]{2}:/, '')
+    .split('-')
+    .map((w, i) => (i > 0 && SMALL_WORDS.has(w) ? w : w.charAt(0).toUpperCase() + w.slice(1)))
+    .join(' ');
+
+/** "United Kingdom" -> "the United Kingdom", for use in a sentence. */
+export const withArticle = (country: string): string =>
+  /^United |Republic$|^(Netherlands|Philippines|Bahamas|Gambia)$/.test(country) ? `the ${country}` : country;
+
+/** "a, b and c" */
+export const listJoin = (items: string[]): string =>
+  items.length <= 1 ? (items[0] ?? '') : `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`;
+
+/** Countries the site serves (meta.countries, biggest first), for "sold in" and the search filter. */
+export const servedCountries = meta.countries.map((c) => ({ ...c, name: countryName(c.tag) }));
+const servedOrder = new Map(servedCountries.map((c, i) => [c.tag, i]));
+
+/** Where a product is sold: the countries the site serves first, then the rest alphabetically. */
+export function soldIn(p: Pick<SiteProduct, 'countries'>): string[] {
+  const order = (t: string) => servedOrder.get(t) ?? Infinity;
+  return p.countries
+    .filter((t) => t !== 'en:world')
+    .sort((a, b) => order(a) - order(b) || (a < b ? -1 : 1))
+    .map(countryName);
 }
 
 /** Brand first, the way people search: "Hellmann's Real Mayonnaise". */
