@@ -80,5 +80,6 @@ export function lowerFirst(s: string): string {
   return /^[A-Z][a-z]/.test(s) ? s.charAt(0).toLowerCase() + s.slice(1) : s;
 }
 
+/** Brand first, the way people search: "Hellmann's Real Mayonnaise". */
 export const productTitle = (p: Pick<SiteProduct, 'name' | 'brand'>) =>
-  p.brand && !p.name.toLowerCase().includes(p.brand.toLowerCase()) ? `${p.name} (${p.brand})` : p.name;
+  p.brand && !p.name.toLowerCase().includes(p.brand.toLowerCase()) ? `${p.brand} ${p.name}` : p.name;

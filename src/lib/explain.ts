@@ -192,6 +192,31 @@ export const CURATED: Record<string, string> = {
   'en:e1422': 'Acetylated distarch adipate is a chemically modified starch that holds up to heating, freezing and acidity, used to thicken sauces and fillings.',
   'en:e1442': 'Hydroxypropyl distarch phosphate is a chemically modified starch used to thicken and stabilise desserts, sauces and soups.',
 
+  // --- common additives that are not NOVA markers ---------------------------
+  'en:e330':
+    'Citric acid is the acid in citrus fruit. As an additive it is made by fermenting sugars with the mould Aspergillus niger, and it adds sourness, regulates acidity and helps preserve.',
+  'en:e500': 'Sodium carbonates include washing soda and baking soda (sodium bicarbonate). They are used as raising agents and to regulate acidity.',
+  'en:e500ii': 'Sodium hydrogen carbonate is baking soda. With an acid it releases carbon dioxide, which makes doughs and batters rise.',
+  'en:e503': "Ammonium carbonates (baker's ammonia) are raising agents, used mainly in thin, crisp biscuits and crackers.",
+  'en:e300': 'Ascorbic acid is vitamin C. It is used as an antioxidant to stop cut fruit and other foods browning, and in flour to strengthen dough.',
+  'en:e301': 'Sodium ascorbate is the sodium salt of vitamin C, used as an antioxidant, often in cured meats.',
+  'en:e306': 'Tocopherol-rich extracts are vitamin E concentrated from vegetable oils, used as an antioxidant to slow fats going rancid.',
+  'en:e392': 'Extracts of rosemary are antioxidants from rosemary leaves, used to slow fats and oils going rancid.',
+  'en:e270': 'Lactic acid is the acid made by fermentation in yoghurt and sauerkraut. As an additive it regulates acidity and helps preserve.',
+  'en:e260': 'Acetic acid is the acid in vinegar, used to regulate acidity and preserve.',
+  'en:e296': 'Malic acid is the acid that makes apples sour. It adds tartness to sweets, drinks and jams.',
+  'en:e331': 'Sodium citrates are salts of citric acid, used to regulate acidity and, in processed cheese, to keep it smooth when it melts.',
+  'en:e282': 'Calcium propionate is a preservative that stops mould growing on bread and other baked goods.',
+  'en:e200': 'Sorbic acid is a preservative against moulds and yeasts.',
+  'en:e220':
+    'Sulphur dioxide is a preservative and antioxidant used in dried fruit, wine and some drinks. Sulphites above 10 mg per kg or litre must be labelled as an allergen in the EU and UK.',
+  'en:e223':
+    'Sodium metabisulphite is a preservative and antioxidant that releases sulphur dioxide. Sulphites above 10 mg per kg or litre must be labelled as an allergen in the EU and UK.',
+  'en:e341': 'Calcium phosphates are used as raising agents, to stop powders caking and to add calcium.',
+  'en:e509': 'Calcium chloride keeps canned vegetables firm, and is used in cheese and tofu making.',
+  'en:e170': 'Calcium carbonate is chalk. It is used as a white colour, to regulate acidity and to add calcium, for example in UK flour.',
+  'en:e920': 'L-cysteine is an amino acid used to soften dough so it is easier to shape. It is made by fermentation or extracted from feathers or hair.',
+
   // --- group 3 markers -------------------------------------------------------
   'en:sugar': 'Sugar refined from sugar cane or beet.',
   'en:salt': 'Salt, added for taste and preservation.',

@@ -83,15 +83,21 @@ jobs:
           path: data/work
           key: ${{ steps.key.outputs.prefix }}${{ github.run_id }}
 
-      - name: Select products and build site data
-        run: node pipeline/select.ts --export-date "$(cat data/work/export-date.txt)"
-
-      - name: Refuse to deploy sample data
-        run: node -e "const m=require('./data/site/meta.json'); if (m.source !== 'export') { console.error('data/site was built from the sample'); process.exit(1) } console.log(m.funnel)"
-
       - name: Configure Pages
         id: pages
         uses: actions/configure-pages@v6
+
+      # Pages Google has indexed should not disappear or move when the
+      # weekly refresh re-ranks products. The live sitemap is the record of
+      # what is published; a missing site (first deploy) just means no list.
+      - name: List pages already published
+        run: node pipeline/fetch-published.ts --site "${{ steps.pages.outputs.base_url }}" --out data/published.txt
+
+      - name: Select products and build site data
+        run: node pipeline/select.ts --export-date "$(cat data/work/export-date.txt)" --published data/published.txt
+
+      - name: Refuse to deploy sample data
+        run: node -e "const m=require('./data/site/meta.json'); if (m.source !== 'export') { console.error('data/site was built from the sample'); process.exit(1) } console.log(m.funnel)"
 
       - name: Type-check
         run: npm run check

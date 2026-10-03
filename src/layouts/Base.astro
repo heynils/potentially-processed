@@ -1,5 +1,8 @@
 ---
 import '@fontsource-variable/archivo/wdth.css';
+// Same file the stylesheet references (Vite gives it the same hashed URL), so
+// the preload below lets the browser start fetching it before parsing CSS.
+import archivoLatin from '@fontsource-variable/archivo/files/archivo-latin-wdth-normal.woff2?url';
 import '../styles/global.css';
 import { href, meta } from '../lib/data.ts';
 import { SITE } from '../lib/site.ts';
@@ -18,7 +21,11 @@ interface Props {
 }
 
 const { title, description, jsonLd = [], image, noindex = false, hideHeaderSearch = false } = Astro.props;
-const fullTitle = title === SITE.name ? title : `${title} | ${SITE.name}`;
+// Search results show about 60 characters, and Google shows the site name
+// separately, so the suffix is added only when it fits and isn't redundant.
+const suffix = ` | ${SITE.name}`;
+const fullTitle =
+  title === SITE.name || /ultra-processed/i.test(title) || title.length + suffix.length > 60 ? title : title + suffix;
 const canonical = new URL(Astro.url.pathname, Astro.site).href;
 const adsenseClient = import.meta.env.PUBLIC_ADSENSE_CLIENT;
 const year = new Date().getFullYear();
@@ -33,6 +40,7 @@ const year = new Date().getFullYear();
     <meta name="description" content={description} />
     <link rel="canonical" href={canonical} />
     {noindex && <meta name="robots" content="noindex" />}
+    <link rel="preload" href={archivoLatin} as="font" type="font/woff2" crossorigin />
     <link rel="icon" href={href('favicon.svg')} type="image/svg+xml" />
     <link rel="sitemap" href={href('sitemap-index.xml')} />
     <meta name="color-scheme" content="light dark" />
