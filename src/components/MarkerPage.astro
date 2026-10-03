@@ -73,6 +73,7 @@ const jsonLd = [
 <Base title={title} description={metaDescription} jsonLd={jsonLd}>
   <Breadcrumbs items={breadcrumbItems} />
   <div data-pagefind-body data-pagefind-meta={`kind:${m.kind === 'additive' ? 'Additive' : 'Ingredient'}`}>
+    <span hidden data-pagefind-ignore data-pagefind-meta="image[data-src]" data-src="none"></span>
     <h1 data-pagefind-meta="title">{label}</h1>
     <p class="lede">{verdict}</p>
   </div>

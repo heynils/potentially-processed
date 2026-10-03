@@ -16,34 +16,45 @@ import { labels, markerByTag } from './data.ts';
 
 export type MarkerKind = 'cosmetic' | 'extracted' | 'culinary' | 'processed-ingredient' | 'preservation' | 'category';
 
-export const KINDS: Record<MarkerKind, { title: string; explanation: string }> = {
+/**
+ * `short` is the one-line version for product pages, where a long list of
+ * markers needs to stay scannable; `explanation` is the full text for
+ * marker pages.
+ */
+export const KINDS: Record<MarkerKind, { title: string; short: string; explanation: string }> = {
   cosmetic: {
     title: 'Cosmetic additives',
+    short: 'Added to change how the food looks, feels or tastes, not to keep it safe. A hallmark of ultra-processed food.',
     explanation:
       'NOVA calls these additives "cosmetic": they change how a product looks, feels or tastes rather than keeping it safe to eat. Their presence is one of the two defining signs of an ultra-processed food.',
   },
   extracted: {
     title: 'Substances rarely used in home kitchens',
+    short: 'Refined or extracted in factories, such as syrups made from starch or isolated proteins. The other hallmark of ultra-processed food.',
     explanation:
       'These are extracted from foods or derived from them industrially: refined sugars made from starch, isolated proteins and fibres, modified starches and oils. NOVA calls them "substances of no or rare culinary use", the other defining sign of an ultra-processed food.',
   },
   culinary: {
     title: 'Culinary ingredients',
+    short: 'Kitchen staples like sugar, salt and oil. On their own they make a food processed, not ultra-processed.',
     explanation:
       'These are group 2 ingredients, the kind a cook adds to whole foods. On their own they make a food processed (group 3), not ultra-processed.',
   },
   'processed-ingredient': {
     title: 'Processed ingredients',
+    short: 'Processed foods in their own right, such as cheese or milk powder.',
     explanation:
       'These are processed foods in their own right (group 3), preserved versions of whole foods, so a product containing them is at least processed.',
   },
   preservation: {
     title: 'Preservation and traditional processing',
+    short: 'Keep food safe or ferment it, like preservatives and cultures. A sign of processing, not ultra-processing.',
     explanation:
       'Preservatives, enzymes and cultures keep food safe or carry out traditional processes such as fermentation. Open Food Facts counts them as signs of processing (group 3), not ultra-processing.',
   },
   category: {
     title: 'Category rules',
+    short: 'Open Food Facts puts every product in this category in at least this group.',
     explanation:
       'Open Food Facts also assigns NOVA groups by category: every product in certain categories is at least the given group, whatever its ingredient list says.',
   },
@@ -268,4 +279,14 @@ export function groupByKind<T extends Pick<Marker, 'tag' | 'type' | 'group'>>(ma
     groups.get(k)!.push(m);
   }
   return order.filter((k) => groups.has(k)).map((k) => [k, groups.get(k)!]);
+}
+
+/**
+ * First sentence of a description, for compact lists. Splits only where a
+ * sentence end is followed by a capital letter, so "FD&C Yellow No. 5" and
+ * "E471)." mid-text don't cut a sentence short.
+ */
+export function firstSentence(text: string): string {
+  const [first] = text.split(/(?<=[.!?])\s+(?=[A-Z"(])/);
+  return first ?? text;
 }

@@ -1,0 +1,100 @@
+---
+// Products as a grid of photo tiles, for places where recognising the pack
+// matters more than reading a list: alternatives and popular products. Flat
+// tiles with no shadows; the whole tile is the link.
+import type { SiteProduct } from '../../pipeline/lib/types.ts';
+import { productHref } from '../lib/data.ts';
+import NovaBadge from './NovaBadge.astro';
+import ProductThumb from './ProductThumb.astro';
+
+interface Props {
+  products: SiteProduct[];
+  /** Show ingredient and additive counts, for comparing against the current product. */
+  stats?: boolean;
+}
+
+const { products, stats = false } = Astro.props;
+const plural = (n: number, word: string) => `${n === 0 ? 'no' : n} ${word}${n === 1 ? '' : 's'}`;
+---
+
+<ul class="tiles">
+  {
+    products.map((p) => (
+      <li>
+        <a class="tile" href={productHref(p)}>
+          <span class="name">{p.name}</span>
+          {p.brand && <span class="sub">{p.brand}</span>}
+          {stats && (
+            <span class="stats">
+              {plural(p.ingredientCount, 'ingredient')} · {plural(p.additives.length, 'additive')}
+            </span>
+          )}
+          <span class="pic">
+            <ProductThumb product={p} fluid />
+            <span class="badge">
+              <NovaBadge group={p.nova} />
+            </span>
+          </span>
+        </a>
+      </li>
+    ))
+  }
+</ul>
+
+<style>
+  .tiles {
+    list-style: none;
+    padding: 0;
+    margin: 1rem 0 1.5rem;
+    display: grid;
+    /* fixed columns, so 4 or 8 tiles always fill whole rows */
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1.25rem 1rem;
+    max-width: 52rem;
+  }
+  @media (min-width: 40rem) {
+    .tiles {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+  }
+  .tile {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    color: var(--text);
+    text-decoration: none;
+    height: 100%;
+  }
+  /* photo first visually; name first for screen readers */
+  .pic {
+    order: -1;
+    position: relative;
+    margin-bottom: 0.45rem;
+  }
+  .badge {
+    position: absolute;
+    left: 0.4rem;
+    top: 0.4rem;
+  }
+  .name {
+    color: var(--link);
+    text-decoration: underline;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 0.18em;
+    line-height: 1.3;
+    overflow-wrap: anywhere;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .tile:hover .name {
+    text-decoration-thickness: 2px;
+  }
+  .sub,
+  .stats {
+    color: var(--muted);
+    font-size: 0.85rem;
+    font-stretch: 88%;
+  }
+</style>

@@ -1,0 +1,66 @@
+---
+// "Share" opens the phone's share sheet (Web Share API) and falls back to
+// copying the link. It stays hidden until the script confirms one of the two
+// works, so browsers without JS never see a dead button.
+import Icon from './Icon.astro';
+
+interface Props {
+  title: string;
+  text?: string;
+}
+
+const { title, text } = Astro.props;
+---
+
+<button type="button" class="share" data-share data-title={title} data-text={text} hidden>
+  <Icon name="share" size={16} />
+  <span aria-live="polite">Share</span>
+</button>
+
+<script>
+  for (const button of document.querySelectorAll<HTMLButtonElement>('[data-share]')) {
+    const canShare = typeof navigator.share === 'function';
+    const canCopy = Boolean(navigator.clipboard?.writeText);
+    if (!canShare && !canCopy) continue;
+    const url = document.querySelector<HTMLLinkElement>('link[rel="canonical"]')?.href ?? location.href;
+    const label = button.querySelector('span')!;
+    button.hidden = false;
+    button.addEventListener('click', async () => {
+      if (canShare) {
+        try {
+          await navigator.share({ title: button.dataset.title, text: button.dataset.text, url });
+        } catch {
+          // closing the share sheet rejects; nothing to do
+        }
+        return;
+      }
+      await navigator.clipboard.writeText(url);
+      label.textContent = 'Link copied';
+      setTimeout(() => (label.textContent = 'Share'), 2500);
+    });
+  }
+</script>
+
+<style>
+  .share {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font: inherit;
+    font-size: 0.9rem;
+    font-weight: 650;
+    font-stretch: 90%;
+    color: var(--text);
+    background: var(--bg);
+    border: 1px solid var(--rule);
+    border-radius: 2px;
+    padding: 0.35rem 0.75rem;
+    cursor: pointer;
+  }
+  .share:hover {
+    border-color: var(--text);
+  }
+  .share[hidden] {
+    display: none;
+  }
+</style>

@@ -50,10 +50,10 @@ const id = variant === 'compact' ? 'q-header' : 'q';
   type PagefindResult = {
     url: string;
     excerpt: string;
-    meta: { title?: string; nova?: string; brand?: string; kind?: string };
+    meta: { title?: string; nova?: string; brand?: string; kind?: string; image?: string };
   };
   type Pagefind = {
-    options: (o: { baseUrl: string }) => Promise<void>;
+    options: (o: { baseUrl?: string; excerptLength?: number }) => Promise<void>;
     search: (q: string) => Promise<{ results: { data: () => Promise<PagefindResult> }[] } | null>;
     debouncedSearch: (q: string, opts?: object, ms?: number) => Promise<{ results: { data: () => Promise<PagefindResult> }[] } | null>;
   };
@@ -63,7 +63,8 @@ const id = variant === 'compact' ? 'q-header' : 'q';
 
   function loadPagefind(): Promise<Pagefind> {
     pagefind ??= import(/* @vite-ignore */ `${base}pagefind/pagefind.js`).then(async (pf: Pagefind) => {
-      await pf.options({ baseUrl: base });
+      // Short excerpts keep a page of results scannable on a phone.
+      await pf.options({ baseUrl: base, excerptLength: 14 });
       return pf;
     });
     return pagefind;
@@ -77,8 +78,13 @@ const id = variant === 'compact' ? 'q-header' : 'q';
       .map((r) => {
         const nova = r.meta.nova ? `<span class="nova-chip nova-chip-${escapeHtml(r.meta.nova)}">NOVA ${escapeHtml(r.meta.nova)}</span>` : '';
         const sub = [r.meta.kind, r.meta.brand].filter(Boolean).map((s) => escapeHtml(s!)).join(' · ');
+        // Product pages give Pagefind a 100 px photo (see products/[slug].astro).
+        // Pages without a photo declare "none" (see the pages' data-pagefind-meta).
+        const thumb = r.meta.image && r.meta.image !== 'none'
+          ? `<img class="thumb" src="${escapeHtml(r.meta.image)}" alt="" width="44" height="44" loading="lazy" decoding="async" referrerpolicy="no-referrer">`
+          : '<span class="thumb" aria-hidden="true"></span>';
         // Pagefind excerpts are already HTML-escaped, with <mark> around matches.
-        return `<li>${nova}<a href="${escapeHtml(r.url)}">${escapeHtml(r.meta.title ?? r.url)}</a>${sub ? `<span class="sub">${sub}</span>` : ''}<p class="excerpt">${r.excerpt}</p></li>`;
+        return `<li>${thumb}<div class="hit">${nova}<a href="${escapeHtml(r.url)}">${escapeHtml(r.meta.title ?? r.url)}</a>${sub ? `<span class="sub">${sub}</span>` : ''}<p class="excerpt">${r.excerpt}</p></div></li>`;
       })
       .join('');
   }
@@ -211,13 +217,26 @@ const id = variant === 'compact' ? 'q-header' : 'q';
   }
 
   .results :global(li) {
+    display: grid;
+    grid-template-columns: 2.75rem minmax(0, 1fr);
+    gap: 0.85rem;
+    align-items: start;
     padding: 0.75rem 0;
     border-bottom: 1px solid var(--rule);
   }
 
-  .results :global(li > a) {
+  .results :global(.thumb) {
+    width: 2.75rem;
+    height: 2.75rem;
+    object-fit: contain;
+    background: var(--img-bg);
+    border-radius: 2px;
+  }
+
+  .results :global(.hit > a) {
     font-weight: 650;
   }
+
 
   .results :global(.sub) {
     margin-left: 0.5rem;
