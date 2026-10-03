@@ -81,7 +81,7 @@ const jsonLd = [
 <Base title={`Least processed ${name}: ${c.count} products ranked`} description={description} jsonLd={jsonLd}>
   <Breadcrumbs items={breadcrumbItems} />
   <div data-pagefind-body>
-    <span hidden data-pagefind-meta="kind">Category</span>
+    <span hidden data-pagefind-ignore data-pagefind-meta="kind">Category</span>
     <h1>
       <span data-pagefind-meta="title">{c.name}</span>, from least to most processed
     </h1>

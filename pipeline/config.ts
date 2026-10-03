@@ -23,6 +23,21 @@ export const BALANCE_SHARE = 0.2;
  */
 export const POOL_SIZE = 60000;
 
+/**
+ * Products sold in these countries rank ahead of the rest (then by
+ * popularity). The site is English-language, and many heavily scanned
+ * products with English labels are sold only elsewhere (Morocco is a large
+ * OFF market). Empty set = rank by popularity alone.
+ */
+export const PRIORITY_COUNTRIES = new Set([
+  'en:united-kingdom',
+  'en:united-states',
+  'en:ireland',
+  'en:canada',
+  'en:australia',
+  'en:new-zealand',
+]);
+
 /** A category gets its own page once it has this many selected products. */
 export const MIN_CATEGORY_PAGE = 8;
 

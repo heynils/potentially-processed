@@ -1,0 +1,251 @@
+# Is it ultra-processed?
+
+A static lookup site for packaged food. Every product page shows the
+product's **NOVA group**, the ingredients that put it there (highlighted and
+explained), and less-processed alternatives from the same category. Category
+pages rank products from least to most processed, and ingredient and additive
+pages explain what each marker is and where it turns up.
+
+There is no backend. A data pipeline turns the Open Food Facts export into
+JSON, Astro renders roughly 5,600 static pages from it, and Pagefind adds a
+search index that runs in the browser. A scheduled GitHub Actions workflow
+rebuilds and redeploys everything weekly.
+
+- [How it works](#how-it-works)
+- [The data pipeline](#the-data-pipeline)
+- [Local development](#local-development)
+- [Deployment](#deployment)
+- [Licensing and attribution](#licensing-and-attribution)
+
+## How it works
+
+**NOVA** is a classification of food by the extent and purpose of industrial
+processing, developed at the University of São Paulo. It has four groups:
+(1) unprocessed or minimally processed foods, (2) processed culinary
+ingredients such as oil and sugar, (3) processed foods, and (4)
+ultra-processed foods. A food lands in group 4 when it contains a **marker**:
+an ingredient that home kitchens rarely use (maltodextrin, protein isolates,
+glucose syrup) or a "cosmetic" additive (flavourings, emulsifiers, colours,
+sweeteners).
+
+**Open Food Facts** (OFF) is a crowdsourced database of about 4.8 million
+food products. It computes each product's NOVA group automatically from the
+ingredient list, and it records *which* markers triggered the group. The site
+builds on that: it doesn't classify anything itself. It explains OFF's
+classification and compares products with each other.
+
+```
+OFF JSONL export (13 GB gzip, ~4.8M products)
+        │  stream, filter, rank            pipeline/extract.ts   ~10 min
+        ▼
+data/work/candidates.jsonl (60k most popular eligible products)
+        │  dedupe, balance, categorise,    pipeline/select.ts    ~3 s
+        │  match markers, find alternatives
+        ▼
+data/site/*.json (5,000 products, ~430 categories, ~115 markers)
+        │  astro build + pagefind          npm run build         ~20 s
+        ▼
+dist/ (static HTML + search index) → GitHub Pages
+```
+
+## The data pipeline
+
+The pipeline is plain TypeScript that Node runs directly. Node 22.18+ strips
+type annotations at load time, so there's no compile step. It has no
+dependencies beyond Node itself.
+
+### Stage 1: extract (`pipeline/extract.ts`)
+
+The OFF export is **JSONL** (JSON Lines): one product per line, one JSON
+object per product, about 24 KB each. Uncompressed that is roughly 100 GB, so
+the extract stage never holds or stores it. It streams the gzip file from the
+URL (or a local file), decompresses on the fly and handles one line at a
+time.
+
+Three techniques keep this fast and memory-flat:
+
+1. **Byte-level pre-filtering.** Most products can't qualify because they
+   have no NOVA group or aren't labelled in English. Each line is checked for
+   the raw bytes `"nova_group":` and `"lang":"en"` *before* it is decoded or
+   parsed. That skips `JSON.parse` for about 80% of lines, and the result is
+   identical because those lines would fail the real check anyway.
+2. **Validation into a slim record** (`lib/normalize.ts`). A product passes
+   only if it has a NOVA group, an English label, a usable name, a parsed
+   ingredient tree and at least one category. It is reduced to about 2 KB:
+   name, brand, NOVA group, markers, ingredient tree, additives, categories,
+   image URL and popularity. Rejected products are counted by reason, and
+   those counts are published on the About page.
+3. **A bounded top-K heap** (`lib/top-k.ts`). A **min-heap** is a tree in
+   which every parent is "smaller" than its children, so the root is always
+   the smallest element. Keeping the 60,000 most popular products in a
+   min-heap ordered by popularity puts the *least* popular kept product at
+   the root. A new product only needs to beat the root to get in, which costs
+   O(log k). Memory stays at 60,000 records no matter how big the export is.
+
+**Popularity** needed care. OFF's `popularity_key` looks like a single
+number, but it is composite: a two-digit year, then a percentile tier
+computed *per country*, then a scan count. Sorting by it puts the 50th most
+scanned product in a small market above a staple scanned by thousands of
+people in the UK. The pipeline therefore ranks by the key's year (recently
+scanned first, which also demotes discontinued products), then by
+`unique_scans_n`, the number of distinct people who scanned the barcode.
+
+A truncated download can't silently produce a small site. gzip ends with a
+checksum, so a cut-off stream makes the run fail, and `--min-lines` fails the
+run if far fewer products arrive than expected.
+
+### Stage 2: select (`pipeline/select.ts`, logic in `lib/build.ts`)
+
+This stage works on the 60,000 candidates in memory and produces everything
+the site renders.
+
+- **Market first.** The site is in English, but Open Food Facts is global.
+  Morocco and India, for example, have many heavily scanned products with
+  English labels. Products sold in the UK, US, Ireland, Canada, Australia or
+  New Zealand therefore rank ahead of the rest, and popularity orders each
+  group. This is a single setting, `PRIORITY_COUNTRIES` in `config.ts`; an
+  empty set ranks by popularity alone.
+- **Plausibility.** A few crowdsourced ingredient lists are truncated to one
+  entry, such as a fat-free mayonnaise whose whole list reads "water". Such a
+  product would look minimally processed and get recommended as an
+  alternative. Products whose only ingredient is water (outside the waters
+  category) or a single additive are dropped. Other single-ingredient
+  products, such as oats, flour and plain yoghurt, are fine.
+
+- **Dedupe.** The same product often exists under several barcodes (pack
+  sizes, regional prints). The pipeline keeps the most popular barcode per
+  brand and name, because near-duplicate pages are what search engines
+  penalise as thin content.
+- **Balanced selection.** Taking the top 5,000 by popularity would leave
+  many popular ultra-processed products with nothing less processed to point
+  to, because plain foods get scanned less. So 80% of the slots go to the
+  most popular products. The pipeline then walks those in order and, wherever
+  a product's category has fewer than two lower-NOVA products, pulls the most
+  popular ones in from the pool, climbing to a broader category if needed.
+  Popularity fills whatever is left.
+- **Taxonomies.** OFF publishes its vocabularies as **taxonomies**: graphs of
+  tags with parent links (`en:soya-lecithin` → `en:e322i` → `en:e322`). The
+  pipeline downloads four of them, for categories, ingredients, additives and
+  additive classes, to get English names, category hierarchies and the links
+  needed for the next step.
+- **Marker matching.** OFF reports markers at whatever level of the taxonomy
+  carries the NOVA property. A product made with "whey powder" gets the marker
+  `en:whey`, and one with "soya lecithin" gets `en:e322`. To highlight the
+  right ingredient, the pipeline checks whether each marker is an *ancestor*
+  of the ingredient in the taxonomy graph, rather than comparing ids. A few
+  links are missing from both taxonomies, such as additive sub-variants like
+  `en:e440a` → `en:e440`. `ingredientAncestors()` adds those by rule, and
+  `config.ts` holds a short alias list taken from the real data.
+- **Categories and alternatives.** A category gets a page once it has 8 or
+  more products. Within a category, products are ordered least processed
+  first: by NOVA group, then by the number of group-4 markers, additives and
+  ingredients. Each product's alternatives are the most popular lower-group
+  products from its most specific category page, falling back to the parent
+  category.
+
+### Numbers from the first real run (export of 3 October 2026)
+
+| Step | Products |
+| --- | ---: |
+| In the export | 4,789,632 |
+| No NOVA group | −3,623,565 |
+| Label not in English | −621,294 |
+| No category | −151,851 |
+| No usable name | −16,615 |
+| No parsed ingredients | −8,875 |
+| Invalid barcode | −282 |
+| **Eligible** | **367,150** |
+| Pool kept by extract | 60,000 |
+| Evidently truncated ingredient lists | −71 |
+| After merging duplicates | 57,166 |
+| **On the site** | **5,000** |
+
+On the site, 759 products are in group 1, 195 in group 2, 1,587 in group 3
+and 2,459 in group 4. 90% of the products in groups 2 to 4 have at least one
+less-processed alternative, and 507 products were pulled in specifically to
+make that possible. There are 436 category pages and 111 ingredient and
+additive pages. The extract stage takes about 10 minutes on a
+4-core machine, and it is CPU-bound on JSON parsing, not on the download.
+
+## Local development
+
+Requires Node 22.18 or newer (see `.nvmrc`).
+
+```sh
+npm ci
+npm run data:sample   # build data/site/ from the committed sample, offline, in seconds
+npm run dev           # http://localhost:4321
+```
+
+The sample in `pipeline/fixtures/` is a trimmed extract of real OFF data:
+about 300 products from eight categories, plus taxonomies trimmed to the
+tags they use. Pages built from it show a "sample data" banner, and the
+deploy workflow refuses to publish them.
+
+Other commands:
+
+```sh
+npm run data       # full pipeline against the live export (~10 min, ~1 GB RAM, no disk)
+npm run build      # static site + search index in dist/ (search doesn't work in dev)
+npm run preview    # serve dist/
+npm test           # pipeline unit tests (node:test)
+npm run check      # astro check: type-checks src/ and pipeline/
+```
+
+To regenerate the sample after a full run, save the export locally (for
+example with `curl -o data/work/export.jsonl.gz`) and run
+`node pipeline/make-fixture.ts`.
+
+Tunables live in `pipeline/config.ts`: the number of products, the balance
+share, the page thresholds and the categories treated as too generic.
+Editorial content lives in `src/lib/explain.ts`, which holds the marker
+descriptions, and `src/lib/nova.ts`, which holds the group definitions.
+
+## Deployment
+
+`.github/workflows/deploy.yml` runs on every push to `main`, weekly on
+Mondays, and on demand.
+
+- The 10-minute extract runs only on the weekly schedule, when the extract
+  code changes, or when you tick *refresh data* on a manual run. Its output,
+  about 125 MB, is stored in the Actions cache. Every other run restores it
+  and goes straight to the select stage and the build.
+- The base URL comes from `actions/configure-pages`, so the same build works
+  at `https://<user>.github.io/<repo>/` and later on a custom domain at `/`.
+
+One-time setup, which only the repository owner can do:
+
+1. In **Settings → Pages**, set the source to **GitHub Actions**.
+2. Push to `main`, or run the workflow manually. The first run downloads the
+   export.
+3. Once a domain is bought, add it in **Settings → Pages → Custom domain** and
+   point DNS at GitHub. No code change is needed. AdSense won't accept a
+   `github.io` address.
+4. Add the site to Google Search Console and submit `sitemap-index.xml`.
+5. After AdSense approval, add the repository *variables* `ADSENSE_CLIENT`
+   and `AD_SLOT_PRODUCT_TOP` (plus the other `AD_SLOT_*` ones in the
+   workflow). Ad units appear only where both a client id and a slot id are
+   set. Also add `public/ads.txt` with the line AdSense gives you.
+
+Limits worth knowing about GitHub Pages: sites can be up to 1 GB (this one is
+about 100 MB), a deployment times out after 10 minutes, and there is a soft
+bandwidth limit of 100 GB a month. The free plan needs a public repository.
+GitHub's terms say Pages isn't meant as free hosting for a commercial
+business. An ad-supported information site is a grey area, and moving to
+Cloudflare Pages is a DNS change.
+
+## Licensing and attribution
+
+- **Data.** Open Food Facts data is under the
+  [Open Database License (ODbL)](https://opendatacommons.org/licenses/odbl/1-0/).
+  The site credits Open Food Facts and links the licence in the footer and on
+  every product page, and those credits must stay. The ODbL is *share-alike*
+  for databases: if you ever publish the derived dataset itself (for example
+  `data/site/*.json`), it must be under the ODbL too. Pages built from it are
+  "produced works" and only need the attribution.
+- **Photos.** Product photos are by OFF contributors under CC BY-SA 3.0.
+  They are credited on each product page and loaded from
+  `images.openfoodfacts.org`. Set `showProductImages: false` in
+  `src/lib/site.ts` to turn them off.
+- **Sample.** `pipeline/fixtures/` is an extract of OFF data and is itself
+  under the ODbL.

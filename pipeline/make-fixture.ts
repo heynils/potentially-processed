@@ -117,17 +117,19 @@ for (const code of [...wanted]) for (const alt of byCode.get(code)?.alternatives
 console.error(`Picked ${wanted.size} products`);
 
 // --- stream the export --------------------------------------------------------
-const CODE = Buffer.from('"code":"');
+// `_id` is the top-level barcode. ("code" also occurs inside nested objects,
+// and key order in the export is arbitrary, so it can't be found by bytes.)
+const ID = Buffer.from('"_id":"');
 const kept: Record<string, unknown>[] = [];
 const found = new Set<string>();
 const rejects = new Map<string, number>();
 let seen = 0;
 for await (const line of splitLines(await openInput(args.export))) {
   if (++seen % 500_000 === 0) console.error(`  ${seen.toLocaleString('en')} lines, kept ${kept.length}`);
-  const at = line.indexOf(CODE);
+  const at = line.indexOf(ID);
   if (at === -1) continue;
-  const end = line.indexOf(0x22, at + CODE.length);
-  const code = line.subarray(at + CODE.length, end).toString();
+  const end = line.indexOf(0x22, at + ID.length);
+  const code = line.subarray(at + ID.length, end).toString();
   const want = wanted.has(code);
   // A few real records each filter should reject, for the funnel.
   const sampleReject = !want && seen % 9973 === 0;
@@ -146,7 +148,7 @@ for await (const line of splitLines(await openInput(args.export))) {
   }
   if (found.size === wanted.size && [...rejects.values()].reduce((a, b) => a + b, 0) >= REJECTS_PER_REASON * 3) break;
 }
-console.error(`Kept ${kept.length} records`);
+console.error(`Kept ${kept.length} records (${found.size} of ${wanted.size} wanted products found)`);
 
 await mkdir(`${args.out}/taxonomies`, { recursive: true });
 await writeFile(`${args.out}/sample.jsonl.gz`, gzipSync(kept.map((r) => JSON.stringify(r)).join('\n') + '\n', { level: 9 }));

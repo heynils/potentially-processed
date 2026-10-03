@@ -80,7 +80,11 @@ properties, `.ts` extensions in imports.
   variants (`en:e440a`) are not linked to their base number in either
   taxonomy; `ingredientAncestors()` adds those links.
 - `popularity_key` = scan-stats year + per-country percentile tier + scans.
-  Ranking uses the year, then `unique_scans_n` (see `compareRank`).
+  Ranking uses the year, then `unique_scans_n` (see `compareRank`), and the
+  select stage puts products sold in `PRIORITY_COUNTRIES` first (otherwise
+  Moroccan products with English labels dominate the top of the list).
+- Some ingredient lists are truncated to one entry ("water" for a mayo);
+  `hasImplausibleIngredients()` drops those (71 in the Oct 2026 run).
 
 ## Open items (Nils only)
 

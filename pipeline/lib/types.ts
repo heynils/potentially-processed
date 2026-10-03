@@ -140,6 +140,8 @@ export interface Funnel {
   rejected: Record<string, number>;
   eligible: number;
   pooled: number;
+  /** Dropped from the pool for evidently truncated ingredient lists. */
+  implausible: number;
   afterDedupe: number;
   selected: number;
   selectedForBalance: number;

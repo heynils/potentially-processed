@@ -17,6 +17,8 @@ import type {
 } from './types.ts';
 
 export interface BuildOptions {
+  /** Best-first ordering of products; see marketFirst(). */
+  compare: (a: Candidate, b: Candidate) => number;
   target: number;
   balanceShare: number;
   minCategoryPage: number;
@@ -28,6 +30,33 @@ export interface BuildOptions {
 }
 
 const emptyNovaCounts = (): Record<NovaGroup, number> => ({ 1: 0, 2: 0, 3: 0, 4: 0 });
+
+// ---------------------------------------------------------------------------
+// Ranking
+
+/** compareRank, but products sold in a priority country come first. */
+export function marketFirst(priority: Set<string>): (a: Candidate, b: Candidate) => number {
+  const inMarket = (c: Candidate) => (c.countries.some((t) => priority.has(t)) ? 1 : 0);
+  return (a, b) => inMarket(b) - inMarket(a) || compareRank(a, b);
+}
+
+// ---------------------------------------------------------------------------
+// Data quality
+
+/**
+ * Crowdsourced ingredient lists are sometimes truncated to one entry. A
+ * product whose whole list is "water" (a fat-free mayonnaise, in the real
+ * data) or a single additive ("organic lecithins" for a box of corn flakes)
+ * would show as minimally processed and get recommended as an alternative.
+ * Single-ingredient products are otherwise legitimate (oats, flour, plain
+ * yoghurt), so only these two patterns are dropped.
+ */
+export function hasImplausibleIngredients(c: Candidate, ingredientAncestorsOf: (id: string) => Set<string>): boolean {
+  if (c.ingredients.length !== 1 || c.ingredients[0].children?.length) return false;
+  const id = c.ingredients[0].id;
+  if (id === 'en:water') return !c.categories.some((t) => t === 'en:waters' || t.endsWith('-waters'));
+  return [...ingredientAncestorsOf(id)].some((t) => /^en:e\d/.test(t));
+}
 
 // ---------------------------------------------------------------------------
 // Dedupe
@@ -42,7 +71,7 @@ export function dedupeKey(c: Candidate): string {
   return `${norm(c.brand)}|${norm(c.name)}`;
 }
 
-/** Input must be sorted best-first; the first of each key wins. */
+/** Input must be sorted best-first (see BuildOptions.compare); the first of each key wins. */
 export function dedupe(pool: Candidate[]): Candidate[] {
   const seen = new Set<string>();
   return pool.filter((c) => {
@@ -72,7 +101,7 @@ export function comparisonScopes(c: Candidate, categories: Taxonomy, generic: Se
 }
 
 /**
- * Picks `target` products from the pool (sorted best-first).
+ * Picks `target` products from the pool (sorted best-first by opts.compare).
  *
  * Taking the top N by popularity alone would give a site where a popular
  * ultra-processed product often has nothing less processed to point to,
@@ -88,7 +117,7 @@ export function comparisonScopes(c: Candidate, categories: Taxonomy, generic: Se
 export function selectProducts(
   pool: Candidate[],
   categories: Taxonomy,
-  opts: Pick<BuildOptions, 'target' | 'balanceShare' | 'generic'>,
+  opts: Pick<BuildOptions, 'target' | 'balanceShare' | 'generic' | 'compare'>,
 ): { selected: Candidate[]; balanced: number } {
   const WANT_LOWER = 2;
   const reserve = Math.round(opts.target * opts.balanceShare);
@@ -145,7 +174,7 @@ export function selectProducts(
     if (selected.length >= opts.target) break;
     if (!chosen.has(c.code)) add(c);
   }
-  return { selected: selected.sort(compareRank), balanced };
+  return { selected: selected.sort(opts.compare), balanced };
 }
 
 // ---------------------------------------------------------------------------

@@ -52,6 +52,7 @@ const exportDate = meta.exportDate
           <tr><th scope="row">Other problems (withdrawn products, invalid barcodes, unreadable records)</th><td class="num">−{formatNumber((f.rejected['obsolete'] ?? 0) + (f.rejected['bad-code'] ?? 0) + f.parseErrors)}</td></tr>
           <tr class="total"><th scope="row">Eligible products</th><td class="num">{formatNumber(f.eligible)}</td></tr>
           <tr><th scope="row">Most-scanned eligible products considered</th><td class="num">{formatNumber(f.pooled)}</td></tr>
+          <tr><th scope="row">Ingredient list evidently truncated (only "water", or a single additive)</th><td class="num">−{formatNumber(f.implausible)}</td></tr>
           <tr><th scope="row">After merging duplicates (same brand and name)</th><td class="num">{formatNumber(f.afterDedupe)}</td></tr>
           <tr class="total"><th scope="row">Products on this site</th><td class="num">{formatNumber(f.selected)}</td></tr>
         </tbody>

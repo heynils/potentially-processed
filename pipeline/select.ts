@@ -16,11 +16,20 @@ import {
   MAX_RELATED,
   MIN_CATEGORY_PAGE,
   MIN_MARKER_PAGE,
+  PRIORITY_COUNTRIES,
   SITE_DATA_DIR,
   TARGET_PRODUCTS,
   WORK_DIR,
 } from './config.ts';
-import { buildSite, dedupe, selectProducts, type BuildOptions } from './lib/build.ts';
+import {
+  buildSite,
+  dedupe,
+  hasImplausibleIngredients,
+  ingredientAncestors,
+  marketFirst,
+  selectProducts,
+  type BuildOptions,
+} from './lib/build.ts';
 import { loadTaxonomies } from './lib/taxonomy.ts';
 import type { Candidate, NovaGroup, SiteMeta } from './lib/types.ts';
 
@@ -39,6 +48,7 @@ const { values: args } = parseArgs({
 });
 
 const opts: BuildOptions = {
+  compare: marketFirst(PRIORITY_COUNTRIES),
   target: Number(args.target),
   balanceShare: BALANCE_SHARE,
   minCategoryPage: Number(args['min-category-page']),
@@ -57,7 +67,9 @@ const pool: Candidate[] = (await readFile(`${args.work}/candidates.jsonl`, 'utf8
   .map((line) => JSON.parse(line));
 const tax = await loadTaxonomies(args.taxonomies ?? `${args.work}/taxonomies`);
 
-const unique = dedupe(pool);
+const ancestorsOf = ingredientAncestors(tax.ingredients, opts.extraIngredientParents);
+const plausible = pool.filter((c) => !hasImplausibleIngredients(c, ancestorsOf));
+const unique = dedupe(plausible.sort(opts.compare));
 const { selected, balanced } = selectProducts(unique, tax.categories, opts);
 const site = buildSite(selected, tax, opts);
 
@@ -75,6 +87,7 @@ const meta: SiteMeta = {
     rejected: stats.rejected,
     eligible: stats.eligible,
     pooled: stats.pooled,
+    implausible: pool.length - plausible.length,
     afterDedupe: unique.length,
     selected: site.products.length,
     selectedForBalance: balanced,

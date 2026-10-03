@@ -1,10 +1,22 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { annotateIngredients, buildSite, dedupe, ingredientAncestors, selectProducts, splitAdditiveName, type BuildOptions } from '../lib/build.ts';
+import {
+  annotateIngredients,
+  buildSite,
+  dedupe,
+  hasImplausibleIngredients,
+  ingredientAncestors,
+  marketFirst,
+  selectProducts,
+  splitAdditiveName,
+  type BuildOptions,
+} from '../lib/build.ts';
+import { compareRank } from '../lib/normalize.ts';
 import { productSlug, slugify } from '../lib/slug.ts';
 import { candidate, testTaxonomies } from './helpers.ts';
 
 const opts: BuildOptions = {
+  compare: compareRank,
   target: 10,
   balanceShare: 0.2,
   minCategoryPage: 2,
@@ -118,4 +130,23 @@ test('splitAdditiveName and slugs', () => {
   assert.equal(slugify('Crème Fraîche & Co.'), 'creme-fraiche-and-co');
   assert.equal(productSlug("Heinz Tomato Ketchup", 'Heinz', '123'), 'heinz-tomato-ketchup-123');
   assert.equal(productSlug('Tomato Ketchup', 'Heinz', '123'), 'heinz-tomato-ketchup-123');
+});
+
+test('marketFirst ranks products sold in priority countries first', () => {
+  const compare = marketFirst(new Set(['en:united-kingdom']));
+  const elsewhere = candidate({ code: 'a', scans: 900, countries: ['en:morocco'] });
+  const uk = candidate({ code: 'b', scans: 50, countries: ['en:united-kingdom', 'en:france'] });
+  const ukPopular = candidate({ code: 'c', scans: 400, countries: ['en:united-kingdom'] });
+  assert.deepEqual([elsewhere, uk, ukPopular].sort(compare).map((c) => c.code), ['c', 'b', 'a']);
+  assert.deepEqual([elsewhere, uk].sort(marketFirst(new Set())).map((c) => c.code), ['a', 'b'], 'empty set = popularity only');
+});
+
+test('hasImplausibleIngredients flags truncated lists only', () => {
+  const ancestorsOf = ingredientAncestors(testTaxonomies().ingredients, {});
+  const one = (id: string, categories = ['en:sauces']) => candidate({ code: id, ingredients: [{ id, text: id }], categories });
+  assert.equal(hasImplausibleIngredients(one('en:water'), ancestorsOf), true, 'mayo made of water');
+  assert.equal(hasImplausibleIngredients(one('en:water', ['en:beverages', 'en:waters']), ancestorsOf), false);
+  assert.equal(hasImplausibleIngredients(one('en:soya-lecithin'), ancestorsOf), true, 'a lone additive');
+  assert.equal(hasImplausibleIngredients(one('en:whey-powder'), ancestorsOf), false);
+  assert.equal(hasImplausibleIngredients(candidate({ code: 'x', ingredients: [{ id: 'en:oats', text: 'oats' }, { id: 'en:water', text: 'water' }] }), ancestorsOf), false);
 });

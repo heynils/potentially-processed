@@ -52,10 +52,7 @@
     --link: #9db7ff;
     --link-hover: #c9d7ff;
     --focus: #9db7ff;
-    --nova-1: #3f9a46;
-    --nova-2: #e8bd17;
-    --nova-3: #d06a1c;
-    --nova-4: #d9353c;
+    /* NOVA fills stay as in light mode: they carry white text at 4.5:1+ */
     --mark-4-bg: #4a1a1d;
     --mark-4-line: #ff7a7f;
     --mark-3-bg: #43301a;
