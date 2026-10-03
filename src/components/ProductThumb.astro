@@ -1,0 +1,77 @@
+---
+// A product photo in a fixed square box, hotlinked from Open Food Facts'
+// image CDN (CC BY-SA, credited in the footer and on product pages).
+// The box size is set up front, so nothing shifts while photos load, and
+// photos load lazily, so long lists only fetch what scrolls into view.
+// Products without a photo show their NOVA group's icon instead.
+import type { SiteProduct } from '../../pipeline/lib/types.ts';
+import { imageAt, imageSrcset } from '../lib/data.ts';
+import { NOVA } from '../lib/nova.ts';
+import Icon from './Icon.astro';
+
+interface Props {
+  product: Pick<SiteProduct, 'image' | 'nova'>;
+  /** Box size in CSS px. Ignored when `fluid`. */
+  size?: number;
+  /** Fill the parent's width (square), for tiles in a grid. */
+  fluid?: boolean;
+  /** The `sizes` hint for fluid thumbs. */
+  sizes?: string;
+}
+
+const { product, size = 48, fluid = false, sizes = '(max-width: 40rem) 45vw, 12.5rem' } = Astro.props;
+const image = product.image;
+// 100 px covers a 48 px box on 2x screens; bigger boxes pick from 200/400 px.
+const small = !fluid && size <= 50;
+const src = image ? imageAt(image, small ? 100 : 200) : null;
+---
+
+<span class:list={['thumb', { fluid }]} style={fluid ? undefined : `--thumb:${size}px`}>
+  {
+    image && src ? (
+      <img
+        src={src.url}
+        srcset={small ? undefined : imageSrcset(image)}
+        sizes={small ? undefined : fluid ? sizes : `${size}px`}
+        width={fluid ? src.width : size}
+        height={fluid ? src.height : size}
+        alt=""
+        loading="lazy"
+        decoding="async"
+        referrerpolicy="no-referrer"
+      />
+    ) : (
+      <span class="no-photo">
+        <Icon name={NOVA[product.nova].icon} size={fluid ? 40 : Math.round(size * 0.45)} />
+      </span>
+    )
+  }
+</span>
+
+<style>
+  .thumb {
+    display: grid;
+    place-items: center;
+    flex: none;
+    width: var(--thumb);
+    height: var(--thumb);
+    background: var(--img-bg);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .thumb.fluid {
+    width: 100%;
+    height: auto;
+    aspect-ratio: 1;
+    padding: 0.5rem;
+  }
+  img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+  }
+  .no-photo {
+    color: var(--muted);
+    opacity: 0.6;
+  }
+</style>

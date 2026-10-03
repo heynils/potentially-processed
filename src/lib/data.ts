@@ -4,7 +4,7 @@
 
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import type { SiteCategory, SiteLabels, SiteMarker, SiteMeta, SiteProduct } from '../../pipeline/lib/types.ts';
+import type { ProductImage, SiteCategory, SiteLabels, SiteMarker, SiteMeta, SiteProduct } from '../../pipeline/lib/types.ts';
 
 const DIR = resolve(process.cwd(), process.env.SITE_DATA_DIR || 'data/site');
 
@@ -40,6 +40,36 @@ export const markerHref = (m: Pick<SiteMarker, 'slug' | 'kind'>) =>
   href(`${m.kind === 'additive' ? 'additives' : 'ingredients'}/${m.slug}/`);
 
 export const offProductUrl = (code: string) => `https://world.openfoodfacts.org/product/${code}`;
+
+// --- Images -------------------------------------------------------------------
+
+/**
+ * Open Food Facts serves every product photo at 100, 200 and 400 px on its
+ * longest side; the pipeline stores the 400 px URL and its dimensions. The
+ * smaller versions only differ in the URL suffix, and keep the aspect ratio.
+ */
+export function imageAt(image: ProductImage, size: 100 | 200 | 400): ProductImage {
+  const scale = Math.min(1, size / Math.max(image.width, image.height));
+  return {
+    url: image.url.replace(/\.400\.jpg$/, `.${size}.jpg`),
+    width: Math.round(image.width * scale),
+    height: Math.round(image.height * scale),
+  };
+}
+
+/** srcset with the 200 and 400 px versions at their real widths, for `sizes` to choose from. */
+export const imageSrcset = (image: ProductImage): string =>
+  ([200, 400] as const)
+    .map((size) => imageAt(image, size))
+    .map((v) => `${v.url} ${v.width}w`)
+    .join(', ');
+
+/** Photo of the most popular product in a category, to illustrate it in lists. */
+export function categoryImage(category: Pick<SiteCategory, 'codes'>): ProductImage | null {
+  const codes = new Set(category.codes);
+  // `products` is ordered most popular first.
+  return products.find((p) => p.image && codes.has(p.code))?.image ?? null;
+}
 
 // --- Formatting -------------------------------------------------------------
 

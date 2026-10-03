@@ -1,0 +1,185 @@
+---
+// The four NOVA groups as a left-to-right scale, farm to factory, with an
+// icon per group. "verdict" highlights where one product sits; "explain"
+// adds a one-line summary per group, for pages that introduce NOVA.
+import type { NovaGroup } from '../../pipeline/lib/types.ts';
+import { NOVA } from '../lib/nova.ts';
+import Icon from './Icon.astro';
+
+interface Props {
+  variant?: 'verdict' | 'explain';
+  current?: NovaGroup;
+}
+
+const { variant = 'verdict', current } = Astro.props;
+const groups = [1, 2, 3, 4] as NovaGroup[];
+---
+
+<ol class:list={['nova-scale', variant, { 'has-current': current }]} aria-label="NOVA groups, from least to most processed">
+  {
+    groups.map((g) => (
+      <li class:list={[`step step-${g}`, { current: g === current }]} aria-current={g === current ? 'true' : undefined}>
+        <span class="dot">
+          <Icon name={NOVA[g].icon} size={variant === 'explain' ? 26 : 22} />
+        </span>
+        <span class="text">
+          <span class="name">
+            <span class="num">{g}</span> {NOVA[g].label}
+          </span>
+          {variant === 'explain' && <span class="summary">{NOVA[g].summary}</span>}
+        </span>
+      </li>
+    ))
+  }
+</ol>
+
+<style>
+  .nova-scale {
+    list-style: none;
+    margin: 1rem 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    position: relative;
+  }
+
+  /* the line the four steps sit on */
+  .nova-scale::before {
+    content: '';
+    position: absolute;
+    top: 1.25rem;
+    left: 12.5%;
+    right: 12.5%;
+    height: 2px;
+    background: linear-gradient(90deg, var(--nova-1), var(--nova-2), var(--nova-3), var(--nova-4));
+    opacity: 0.45;
+  }
+
+  .step {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 0.4rem;
+    padding: 0 0.15rem;
+  }
+
+  .dot {
+    display: grid;
+    place-items: center;
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: 50%;
+    background: var(--bg);
+    border: 2px solid var(--step);
+    color: var(--step);
+  }
+
+  .step-1 {
+    --step: var(--nova-1);
+    --step-ink: var(--nova-1-ink);
+  }
+  .step-2 {
+    --step: var(--nova-2);
+    --step-ink: var(--nova-2-ink);
+  }
+  .step-3 {
+    --step: var(--nova-3);
+    --step-ink: var(--nova-3-ink);
+  }
+  .step-4 {
+    --step: var(--nova-4);
+    --step-ink: var(--nova-4-ink);
+  }
+
+  .text {
+    line-height: 1.2;
+  }
+  .name {
+    font-size: 0.8rem;
+    font-stretch: 85%;
+    color: var(--muted);
+  }
+
+  .num {
+    font-weight: 800;
+    font-stretch: 110%;
+  }
+
+  /* verdict: the product's group is filled and bold, the others recede
+     (only the circles fade, so the labels keep their contrast) */
+  .has-current .step:not(.current) .dot {
+    opacity: 0.5;
+  }
+  .current .dot {
+    background: var(--step);
+    color: var(--step-ink);
+    transform: scale(1.18);
+  }
+  .current .name {
+    color: var(--text);
+    font-weight: 750;
+  }
+
+  /* explain: every group filled, with its summary underneath */
+  .explain .dot {
+    width: 3rem;
+    height: 3rem;
+    background: var(--step);
+    color: var(--step-ink);
+  }
+  .explain::before {
+    top: 1.5rem;
+  }
+  .explain .name {
+    font-size: 1rem;
+    font-weight: 750;
+    color: var(--text);
+  }
+  .explain .summary {
+    display: block;
+    margin-top: 0.3rem;
+    font-size: 0.9rem;
+    line-height: 1.45;
+    color: var(--muted);
+    max-width: 22ch;
+    margin-inline: auto;
+  }
+
+  /* On phones the explainer becomes a vertical list: icon left, text right. */
+  @media (max-width: 40rem) {
+    .explain {
+      grid-template-columns: 1fr;
+      gap: 1rem;
+    }
+    .explain::before {
+      top: 1.5rem;
+      bottom: 1.5rem;
+      left: 1.5rem;
+      right: auto;
+      width: 2px;
+      height: auto;
+      background: linear-gradient(180deg, var(--nova-1), var(--nova-2), var(--nova-3), var(--nova-4));
+    }
+    .explain .step {
+      flex-direction: row;
+      align-items: flex-start;
+      text-align: left;
+      gap: 0.9rem;
+    }
+    .explain .dot {
+      flex: none;
+    }
+    .explain .summary {
+      max-width: none;
+      margin-inline: 0;
+    }
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .current .dot {
+      transition: transform 0.2s ease;
+    }
+  }
+</style>

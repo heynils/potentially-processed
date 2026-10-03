@@ -1,16 +1,19 @@
 ---
 import type { GetStaticPaths } from 'astro';
-import type { SiteCategory } from '../../../pipeline/lib/types.ts';
+import type { NovaGroup, SiteCategory } from '../../../pipeline/lib/types.ts';
 import Base from '../../layouts/Base.astro';
 import AdSlot from '../../components/AdSlot.astro';
 import Breadcrumbs from '../../components/Breadcrumbs.astro';
+import Icon from '../../components/Icon.astro';
 import NovaBar from '../../components/NovaBar.astro';
 import ProductList from '../../components/ProductList.astro';
 import {
   categories,
   categoryByTag,
   categoryHref,
+  categoryImage,
   getProducts,
+  imageAt,
   href,
   lowerFirst,
   markerByTag,
@@ -19,6 +22,7 @@ import {
   percent,
   productHref,
 } from '../../lib/data.ts';
+import { NOVA } from '../../lib/nova.ts';
 
 export const getStaticPaths = (() => categories.map((category) => ({ params: { slug: category.slug }, props: { category } }))) satisfies GetStaticPaths;
 
@@ -35,9 +39,18 @@ const name = lowerFirst(c.name);
 const listed = getProducts(c.codes.slice(0, MAX_LISTED));
 const ultra = percent(c.novaCounts[4], c.count);
 const leastProcessed = listed[0];
-const summary =
-  `We track ${c.count} ${name}. ${ultra}% of them are ultra-processed (NOVA group 4)` +
-  (c.novaCounts[1] > 0 ? `, and ${c.novaCounts[1]} ${c.novaCounts[1] === 1 ? 'is' : 'are'} minimally processed (group 1).` : '.');
+const thumb = categoryImage(c);
+const summary = `We track ${c.count} ${name}, ${ultra}% of them ultra-processed.`;
+
+// The ranked list, split into one section per NOVA group (codes are already
+// sorted least processed first, so each group is a contiguous run).
+const sections = ([1, 2, 3, 4] as NovaGroup[])
+  .map((g) => {
+    const items = listed.filter((p) => p.nova === g);
+    const start = listed.findIndex((p) => p.nova === g) + 1;
+    return { group: g, items, start, total: c.novaCounts[g] };
+  })
+  .filter((sct) => sct.items.length > 0);
 const chain: SiteCategory[] = [];
 for (let t = c.parent; t; t = categoryByTag.get(t)!.parent) chain.unshift(categoryByTag.get(t)!);
 const children = c.children.map((t) => categoryByTag.get(t)!);
@@ -82,6 +95,8 @@ const jsonLd = [
   <Breadcrumbs items={breadcrumbItems} />
   <div data-pagefind-body>
     <span hidden data-pagefind-ignore data-pagefind-meta="kind">Category</span>
+    {/* Search shows the category's most popular product; explicit, or Pagefind takes the first photo in the list. */}
+    <span hidden data-pagefind-ignore data-pagefind-meta="image[data-src]" data-src={thumb ? imageAt(thumb, 100).url : 'none'} />
     <h1>
       <span data-pagefind-meta="title">{c.name}</span>, from least to most processed
     </h1>
@@ -91,37 +106,33 @@ const jsonLd = [
     </p>
   </div>
 
-  <NovaBar counts={c.novaCounts} />
+  <NovaBar counts={c.novaCounts} legend={false} />
 
-  {
-    c.topMarkers.length > 0 && (
-      <section aria-labelledby="markers">
-        <h2 id="markers">What makes {name} ultra-processed</h2>
-        <p>The ingredients and additives that most often put {name} into group 4:</p>
-        <ul class="marker-list">
-          {c.topMarkers.map(([tag, n]) => {
-            const m = markerByTag.get(tag);
-            const label = markerLabel(tag, m?.kind === 'additive' || /^en:e\d/.test(tag) ? 'additives' : 'ingredients');
-            return (
-              <li>
-                {m ? <a href={markerHref(m)}>{label}</a> : label}
-                <span class="meta"> in {n} of {c.count} ({percent(n, c.count)}%)</span>
-              </li>
-            );
-          })}
-        </ul>
-      </section>
-    )
-  }
+  <nav class="jump" aria-label="Jump to a NOVA group">
+    <ul>
+      {
+        sections.map((sct) => (
+          <li>
+            <a class={`jump-${sct.group}`} href={`#group-${sct.group}`}>
+              <span class="jump-num">{sct.group}</span> {NOVA[sct.group].label}
+              <span class="jump-count">{sct.total}</span>
+            </a>
+          </li>
+        ))
+      }
+    </ul>
+  </nav>
 
   {
     children.length > 0 && (
-      <section aria-labelledby="sub">
+      <section aria-labelledby="sub" class="compact">
         <h2 id="sub">Narrower categories</h2>
-        <ul class="subcategories">
+        <ul class="chips">
           {children.map((x) => (
             <li>
-              <a href={categoryHref(x)}>{x.name}</a> <span class="meta">({x.count})</span>
+              <a href={categoryHref(x)}>
+                {x.name} <span class="count">{x.count}</span>
+              </a>
             </li>
           ))}
         </ul>
@@ -129,29 +140,164 @@ const jsonLd = [
     )
   }
 
+  {
+    c.topMarkers.length > 0 && (
+      <section aria-labelledby="markers" class="compact">
+        <h2 id="markers">What makes {name} ultra-processed</h2>
+        <p class="meta">The signs of ultra-processing found most often, and the share of {name} that contain each:</p>
+        <ul class="chips">
+          {c.topMarkers.map(([tag, n]) => {
+            const m = markerByTag.get(tag);
+            const label = markerLabel(tag, m?.kind === 'additive' || /^en:e\d/.test(tag) ? 'additives' : 'ingredients');
+            const inner = (
+              <>
+                {label} <span class="count">{percent(n, c.count)}%</span>
+              </>
+            );
+            return <li>{m ? <a href={markerHref(m)}>{inner}</a> : <span class="chip">{inner}</span>}</li>;
+          })}
+        </ul>
+      </section>
+    )
+  }
+
   <AdSlot name="category-top" />
 
-  <section aria-labelledby="ranking">
-    <h2 id="ranking">All {name}, least processed first</h2>
-    <p class="meta">
-      Sorted by NOVA group, then by the number of ultra-processing markers, additives and ingredients. This ordering is
-      ours, for comparison; it is not part of NOVA.
-      {c.count > MAX_LISTED && ` Showing the ${MAX_LISTED} least processed of ${c.count}; use the narrower categories or search to find the rest.`}
-    </p>
-    <ProductList products={listed} ordered />
-  </section>
+  {
+    sections.map((sct) => (
+      <section id={`group-${sct.group}`} class="group-section" aria-labelledby={`group-${sct.group}-h`}>
+        <h2 id={`group-${sct.group}-h`} class={`group-heading gh-${sct.group}`}>
+          <span class="gh-icon">
+            <Icon name={NOVA[sct.group].icon} size={20} />
+          </span>
+          <span>
+            {NOVA[sct.group].name} <span class="gh-count">({sct.total})</span>
+          </span>
+        </h2>
+        <ProductList products={sct.items} ordered start={sct.start} />
+        {sct.items.length < sct.total && (
+          <p class="meta">
+            Showing the first {sct.items.length} of {sct.total}. The narrower categories above, or search, find the rest.
+          </p>
+        )}
+      </section>
+    ))
+  }
+  <p class="meta">
+    Within each group, products with fewer signs of ultra-processing, additives and ingredients come first. This ordering
+    is ours, for comparison; it is not part of NOVA.
+  </p>
 </Base>
 
 <style>
-  .marker-list,
-  .subcategories {
-    columns: 2 18rem;
-    padding-left: 1.2rem;
-    max-width: 52rem;
+  .jump ul {
+    list-style: none;
+    padding: 0;
+    margin: 0 0 1.5rem;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
   }
-  .marker-list li,
-  .subcategories li {
-    break-inside: avoid;
-    margin-bottom: 0.3rem;
+  .jump a {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.3rem 0.65rem;
+    border: 1px solid var(--rule);
+    border-left: 4px solid var(--jump);
+    border-radius: 2px;
+    color: var(--text);
+    text-decoration: none;
+    font-size: 0.95rem;
+  }
+  .jump a:hover {
+    background: var(--bg-subtle);
+  }
+  .jump-num {
+    font-weight: 800;
+  }
+  .jump-count,
+  .count {
+    color: var(--muted);
+    font-size: 0.85rem;
+    font-variant-numeric: tabular-nums;
+  }
+  .jump-1 {
+    --jump: var(--nova-1);
+  }
+  .jump-2 {
+    --jump: var(--nova-2);
+  }
+  .jump-3 {
+    --jump: var(--nova-3);
+  }
+  .jump-4 {
+    --jump: var(--nova-4);
+  }
+
+  .compact h2 {
+    font-size: 1.15rem;
+    margin-top: 1.5rem;
+  }
+  .chips {
+    list-style: none;
+    padding: 0;
+    margin: 0.5rem 0 1rem;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.45rem;
+    max-width: 56rem;
+  }
+  .chips a,
+  .chips .chip {
+    display: inline-block;
+    padding: 0.25rem 0.6rem;
+    border: 1px solid var(--rule);
+    border-radius: 2px;
+    color: var(--text);
+    text-decoration: none;
+    font-size: 0.95rem;
+  }
+  .chips a:hover {
+    border-color: var(--text);
+  }
+
+  .group-section {
+    scroll-margin-top: 1rem;
+  }
+  .group-heading {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+  }
+  .gh-icon {
+    display: grid;
+    place-items: center;
+    flex: none;
+    width: 2.25rem;
+    height: 2.25rem;
+    border-radius: 50%;
+    background: var(--gh);
+    color: var(--gh-ink);
+  }
+  .gh-count {
+    color: var(--muted);
+    font-weight: 500;
+  }
+  .gh-1 {
+    --gh: var(--nova-1);
+    --gh-ink: var(--nova-1-ink);
+  }
+  .gh-2 {
+    --gh: var(--nova-2);
+    --gh-ink: var(--nova-2-ink);
+  }
+  .gh-3 {
+    --gh: var(--nova-3);
+    --gh-ink: var(--nova-3-ink);
+  }
+  .gh-4 {
+    --gh: var(--nova-4);
+    --gh-ink: var(--nova-4-ink);
   }
 </style>

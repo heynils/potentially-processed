@@ -4,8 +4,8 @@ import { NOVA } from '../lib/nova.ts';
 
 interface Props {
   group: NovaGroup;
-  /** "large" for the product verdict, "small" inline in lists */
-  size?: 'large' | 'small';
+  /** "large" for the product verdict, "small" inline in lists, "mini" on a thumbnail's corner */
+  size?: 'large' | 'small' | 'mini';
 }
 
 const { group, size = 'small' } = Astro.props;
@@ -54,6 +54,12 @@ const { group, size = 'small' } = Astro.props;
     width: 1.6rem;
     height: 1.6rem;
     font-size: 0.95rem;
+  }
+
+  .mini {
+    width: 1.2rem;
+    height: 1.2rem;
+    font-size: 0.72rem;
   }
 
   .large {

@@ -1,7 +1,12 @@
 ---
+// Products as rows: photo with the NOVA badge on its corner, then name and
+// brand. The whole row is one link, which gives a comfortable tap target on
+// phones. The name comes first in the markup, so screen readers announce it
+// before the badge; CSS puts the photo first visually.
 import type { SiteProduct } from '../../pipeline/lib/types.ts';
 import { productHref } from '../lib/data.ts';
 import NovaBadge from './NovaBadge.astro';
+import ProductThumb from './ProductThumb.astro';
 
 interface Props {
   products: SiteProduct[];
@@ -18,12 +23,19 @@ const Tag = ordered ? 'ol' : 'ul';
   {
     products.map((p, i) => (
       <li>
-        {ordered && <span class="rank">{start + i}</span>}
-        <NovaBadge group={p.nova} />
-        <span class="text">
-          <a href={productHref(p)}>{p.name}</a>
-          {(p.brand || p.quantity) && <span class="sub">{[p.brand, p.quantity].filter(Boolean).join(' · ')}</span>}
-        </span>
+        <a class="row" href={productHref(p)}>
+          {ordered && <span class="rank">{start + i}</span>}
+          <span class="text">
+            <span class="name">{p.name}</span>
+            {(p.brand || p.quantity) && <span class="sub">{[p.brand, p.quantity].filter(Boolean).join(' · ')}</span>}
+          </span>
+          <span class="pic">
+            <ProductThumb product={p} size={48} />
+            <span class="badge">
+              <NovaBadge group={p.nova} size="mini" />
+            </span>
+          </span>
+        </a>
       </li>
     ))
   }
@@ -37,16 +49,22 @@ const Tag = ordered ? 'ol' : 'ul';
     max-width: 48rem;
   }
   .product-list li {
-    display: flex;
-    gap: 0.75rem;
-    align-items: baseline;
-    padding: 0.55rem 0;
     border-bottom: 1px solid var(--rule);
   }
-  .product-list :global(.nova-badge) {
-    align-self: center;
+  .row {
+    display: flex;
+    align-items: center;
+    gap: 0.85rem;
+    padding: 0.5rem 0;
+    color: var(--text);
+    text-decoration: none;
+  }
+  .row:hover .name {
+    text-decoration: underline;
+    text-decoration-thickness: 2px;
   }
   .rank {
+    order: 0;
     min-width: 2.2ch;
     text-align: right;
     color: var(--muted);
@@ -54,11 +72,33 @@ const Tag = ordered ? 'ol' : 'ul';
     font-variant-numeric: tabular-nums;
     font-stretch: 85%;
   }
+  .pic {
+    order: 1;
+    position: relative;
+    flex: none;
+    margin-right: 0.35rem;
+  }
+  .badge {
+    position: absolute;
+    right: -0.35rem;
+    bottom: -0.25rem;
+  }
+  .badge :global(.nova-badge) {
+    box-shadow: 0 0 0 2px var(--bg);
+  }
   .text {
+    order: 2;
     display: flex;
-    flex-wrap: wrap;
-    column-gap: 0.6rem;
-    align-items: baseline;
+    flex-direction: column;
+    min-width: 0;
+  }
+  .name {
+    line-height: 1.35;
+    color: var(--link);
+    text-decoration: underline;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 0.18em;
+    overflow-wrap: anywhere;
   }
   .sub {
     color: var(--muted);

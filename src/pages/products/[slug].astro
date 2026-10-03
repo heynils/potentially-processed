@@ -1,13 +1,19 @@
 ---
+// Product page, answer first: most visitors arrive from a search for "is X
+// ultra-processed?", so the verdict, the visual scale and the reasons come
+// first, then what to buy instead, then the evidence (highlighted
+// ingredients) and the detailed explanations.
 import type { GetStaticPaths } from 'astro';
 import type { Marker, NovaGroup, SiteProduct } from '../../../pipeline/lib/types.ts';
 import Base from '../../layouts/Base.astro';
 import AdSlot from '../../components/AdSlot.astro';
 import Breadcrumbs from '../../components/Breadcrumbs.astro';
 import IngredientList from '../../components/IngredientList.astro';
-import NovaBadge from '../../components/NovaBadge.astro';
 import NovaBar from '../../components/NovaBar.astro';
+import NovaScale from '../../components/NovaScale.astro';
 import ProductList from '../../components/ProductList.astro';
+import ProductTiles from '../../components/ProductTiles.astro';
+import ShareButton from '../../components/ShareButton.astro';
 import {
   additiveLabel,
   categoryByTag,
@@ -15,6 +21,8 @@ import {
   formatDate,
   getProducts,
   href,
+  imageAt,
+  imageSrcset,
   lowerFirst,
   markerByTag,
   markerHref,
@@ -22,11 +30,10 @@ import {
   offProductUrl,
   ordinal,
   percent,
-  productHref,
   products,
   productTitle,
 } from '../../lib/data.ts';
-import { describeMarker, groupByKind, KINDS } from '../../lib/explain.ts';
+import { describeMarker, firstSentence, groupByKind, KINDS } from '../../lib/explain.ts';
 import { NOVA } from '../../lib/nova.ts';
 import { SITE } from '../../lib/site.ts';
 
@@ -43,40 +50,55 @@ const category = p.category ? categoryByTag.get(p.category)! : null;
 const altCategory = p.alternatives.category ? categoryByTag.get(p.alternatives.category)! : null;
 const alternatives = getProducts(p.alternatives.codes);
 const related = getProducts(p.related);
+const image = SITE.showProductImages ? p.image : null;
 
+const uniqueByTag = (markers: Marker[]) => [...new Map(markers.map((m) => [m.tag, m])).values()];
 // Markers that decide the group, and weaker ones shown for completeness.
-const deciding = p.markers.filter((m) => m.group === p.nova);
-const weaker = p.markers.filter((m) => m.group < p.nova && m.group >= 3);
-const g4 = (x: SiteProduct) => x.markers.filter((m) => m.group === 4).length;
+const deciding = uniqueByTag(p.markers.filter((m) => m.group === p.nova));
+const weaker = uniqueByTag(p.markers.filter((m) => m.group < p.nova && m.group >= 3));
+// Plain-language ingredients ("Flavouring") before E-numbers: they mean more
+// to most readers, and the first few also go into the meta description.
+const chips = [
+  ...deciding.filter((m) => m.type === 'ingredients'),
+  ...deciding.filter((m) => m.type === 'additives'),
+];
+const categoryMarker = deciding.find((m) => m.type === 'categories');
 
+const markerName = (m: Marker) => markerLabel(m.tag, m.type);
+const markerLink = (m: Marker) => {
+  const info = markerByTag.get(m.tag);
+  return info ? markerHref(info) : null;
+};
+// "Flavouring" -> "flavouring", "E160c Paprika extract" -> "E160c paprika extract" (mid-sentence)
+const lowerName = (s: string) =>
+  /^E\d/.test(s) ? s.replace(/^(\S+ )(\S)/, (_, code: string, c: string) => code + c.toLowerCase()) : lowerFirst(s);
 const list = (items: string[]) =>
   items.length <= 1 ? (items[0] ?? '') : `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`;
-const decidingNames = [...new Set(deciding.map((m) => markerLabel(m.tag, m.type)))];
-const lowerName = (s: string) => (/^E\d/.test(s) ? s : lowerFirst(s));
+const plural = (n: number, word: string) => `${n === 0 ? 'No' : n} ${word}${n === 1 ? '' : 's'}`;
 
 const answer: Record<NovaGroup, string> = {
-  4: 'Yes.',
-  3: 'Not ultra-processed, but processed.',
-  2: 'No.',
-  1: 'No.',
+  4: "Yes, it's ultra-processed",
+  3: "It's processed, but not ultra-processed",
+  2: "No, it's a kitchen staple",
+  1: "No, it's unprocessed or minimally processed",
 };
 
-const reason = (() => {
-  const names = list(decidingNames.slice(0, 4).map(lowerName));
-  const more = decidingNames.length > 4 ? ` and ${decidingNames.length - 4} more` : '';
-  if (p.nova === 4)
-    return decidingNames.length
-      ? `Its ingredients include ${decidingNames.length === 1 ? 'a marker' : `${decidingNames.length} markers`} of ultra-processing: ${names}${more}.`
-      : 'Open Food Facts did not record which ingredient triggered this.';
-  if (p.nova === 3)
-    return decidingNames.length
-      ? `It combines whole foods with ${names}${more}, which makes it a processed food, but nothing in the ingredient list marks it as ultra-processed.`
-      : 'Nothing in the ingredient list marks it as ultra-processed.';
-  if (p.nova === 2) return 'It is a culinary ingredient: something extracted from a whole food and used to cook with, rather than eaten on its own.';
-  return 'Open Food Facts found no ingredient in it that indicates more than minimal processing.';
+const because = (() => {
+  if (p.nova === 1) return 'None of its ingredients counts as a sign of processing in NOVA.';
+  if (p.nova === 2) return 'It is pressed or refined from a food and used for cooking, like oil, butter or sugar.';
+  if (chips.length) return p.nova === 4 ? 'Signs of ultra-processing in its ingredients:' : 'Whole foods combined with:';
+  if (categoryMarker) return `Open Food Facts counts every product in its category, ${lowerFirst(markerName(categoryMarker))}, as at least group ${p.nova}.`;
+  return 'Open Food Facts did not record which ingredient put it in this group.';
 })();
 
-const description = `${answer[p.nova]} ${p.name}${p.brand ? ` by ${p.brand}` : ''} is in NOVA group ${p.nova} (${nova.short}). ${reason} See the highlighted ingredients${alternatives.length ? ' and less processed alternatives' : ''}.`.slice(0, 300);
+const chipNames = chips.map((m) => lowerName(markerName(m)));
+const description = (
+  `${answer[p.nova]}. ${title} is in NOVA group ${p.nova} (${nova.short})` +
+  (chipNames.length
+    ? `: it contains ${chipNames.length > 3 ? `${chipNames.slice(0, 3).join(', ')} and more` : list(chipNames)}.`
+    : '.') +
+  ` See its ingredients${alternatives.length ? ` and ${alternatives.length} less processed alternative${alternatives.length === 1 ? '' : 's'}` : ''}.`
+).slice(0, 300);
 
 const breadcrumbItems = [
   { name: 'Home', href: href() },
@@ -97,324 +119,402 @@ const jsonLd = [
   },
 ];
 
-const markerName = (m: Marker) => markerLabel(m.tag, m.type);
-const markerLink = (m: Marker) => {
-  const info = markerByTag.get(m.tag);
-  return info ? markerHref(info) : null;
-};
+// Long marker lists (some products have 15+) show the first few per kind and fold the rest.
+const SHOW_MARKERS = 6;
+const SHOW_CHIPS = 6;
+const hero = image ? imageAt(image, 200) : null;
 ---
 
-<Base title={`Is ${title} ultra-processed?`} description={description} jsonLd={jsonLd} image={p.image?.url}>
+<Base title={`Is ${title} ultra-processed?`} description={description} jsonLd={jsonLd} image={image?.url}>
   <Breadcrumbs items={breadcrumbItems} />
 
   <article data-pagefind-body data-pagefind-meta={`nova:${p.nova}`}>
     <span hidden data-pagefind-ignore data-pagefind-meta="kind">Product</span>
-    <div class="two-col">
-      <div>
-        <h1>
-          Is <span data-pagefind-meta="title">{title}</span> ultra-processed?
-        </h1>
-        <p class="product-meta">
-          {p.brand && <span data-pagefind-meta="brand">{p.brand}</span>}
-          {p.quantity && <span>{p.quantity}</span>}
-          {category && <a href={categoryHref(category)}>{category.name}</a>}
-          <span class="condensed">Barcode {p.code}</span>
-        </p>
+    {p.brand && <span hidden data-pagefind-ignore data-pagefind-meta="brand">{p.brand}</span>}
+    {/* Explicit, or Pagefind would take the first photo on the page, which can be an alternative's. */}
+    <span hidden data-pagefind-ignore data-pagefind-meta="image[data-src]" data-src={image ? imageAt(image, 100).url : 'none'} />
 
-        <section class:list={['verdict', `verdict-${p.nova}`]} aria-labelledby="verdict-heading">
-          <NovaBadge group={p.nova} size="large" />
-          <div>
-            <h2 id="verdict-heading" class="verdict-heading">
-              {answer[p.nova]} NOVA group {p.nova}: {nova.name.toLowerCase()}
-            </h2>
-            <p data-pagefind-ignore>
-              Open Food Facts places this product in NOVA group {p.nova}. {reason}
-            </p>
-          </div>
-        </section>
-      </div>
-
+    <header class="product-head">
+      <h1>
+        Is <span data-pagefind-meta="title">{title}</span> ultra-processed?
+      </h1>
+      <p class="product-meta">
+        {p.quantity && <span>{p.quantity}</span>}
+        {category && <a href={categoryHref(category)}>{category.name}</a>}
+      </p>
       {
-        SITE.showProductImages && p.image && (
-          <figure class="product-image">
-            <img src={p.image.url} width={p.image.width} height={p.image.height} alt={`Front of pack: ${title}`} loading="eager" decoding="async" referrerpolicy="no-referrer" />
-            <figcaption class="meta">
-              Photo: <a href={offProductUrl(p.code)}>Open Food Facts</a> contributors, CC BY-SA
-            </figcaption>
-          </figure>
+        hero && image && (
+          <img
+            class="hero"
+            src={hero.url}
+            srcset={imageSrcset(image)}
+            sizes="(min-width: 52rem) 11rem, 6.5rem"
+            width={hero.width}
+            height={hero.height}
+            alt={`Pack of ${title}`}
+            fetchpriority="high"
+            decoding="async"
+            referrerpolicy="no-referrer"
+          />
         )
       }
-    </div>
+    </header>
+
+    <section class:list={['verdict', `verdict-${p.nova}`]} aria-labelledby="verdict-answer" data-pagefind-ignore>
+      <h2 id="verdict-answer" class="answer">{answer[p.nova]}</h2>
+      <NovaScale current={p.nova} />
+      <p class="because">{because}</p>
+      {
+        chips.length > 0 && (
+          <ul class="chips">
+            {chips.slice(0, SHOW_CHIPS).map((m) => (
+              <li>
+                <a href="#why">{markerName(m)}</a>
+              </li>
+            ))}
+            {chips.length > SHOW_CHIPS && (
+              <li>
+                <a class="more" href="#why">
+                  and {chips.length - SHOW_CHIPS} more
+                </a>
+              </li>
+            )}
+          </ul>
+        )
+      }
+      <div class="facts">
+        <ul>
+          <li>{plural(p.ingredientCount, 'ingredient')}</li>
+          <li>{plural(p.additives.length, 'additive')}</li>
+          {p.nutriscore && <li>Nutri-Score {p.nutriscore.toUpperCase()}</li>}
+        </ul>
+        <ShareButton title={`Is ${title} ultra-processed?`} text={`${answer[p.nova]}.`} />
+      </div>
+    </section>
+
+    {
+      alternatives.length > 0 && altCategory && (
+        <section aria-labelledby="alternatives" data-pagefind-ignore>
+          <h2 id="alternatives">Less processed {lowerFirst(altCategory.name)}</h2>
+          <ProductTiles products={alternatives} stats />
+          <p class="meta">
+            Less processed isn't automatically healthier, so compare the labels for what matters to you, such as sugar or
+            salt.
+          </p>
+        </section>
+      )
+    }
 
     <AdSlot name="product-top" />
-
-    <section aria-labelledby="why" data-pagefind-ignore>
-      <h2 id="why">Why it is in group {p.nova}</h2>
-      <p>{nova.definition}</p>
-      {
-        deciding.length > 0 && (
-          <p>
-            {p.nova === 4
-              ? `Open Food Facts found ${deciding.length === 1 ? 'one marker' : `${deciding.length} markers`} of ultra-processing in it:`
-              : p.nova === 3
-                ? 'These are what make it processed rather than minimally processed:'
-                : 'This is what Open Food Facts based the group on:'}
-          </p>
-        )
-      }
-      {
-        groupByKind(deciding).map(([kind, items]) => (
-          <div class={`kind kind-${p.nova}`}>
-            <h3>
-              {KINDS[kind].title} <span class="count">({items.length})</span>
-            </h3>
-            <p class="kind-explanation">{KINDS[kind].explanation}</p>
-            <dl class="markers">
-              {items.map((m) => (
-                <div>
-                  <dt>{markerLink(m) ? <a href={markerLink(m)}>{markerName(m)}</a> : markerName(m)}</dt>
-                  <dd>{describeMarker(m)}</dd>
-                </div>
-              ))}
-            </dl>
-          </div>
-        ))
-      }
-      {
-        weaker.length > 0 && (
-          <details>
-            <summary>
-              It also contains {weaker.length} ingredient{weaker.length === 1 ? '' : 's'} that on {weaker.length === 1 ? 'its' : 'their'} own would only make it processed (group 3)
-            </summary>
-            <dl class="markers">
-              {weaker.map((m) => (
-                <div>
-                  <dt>{markerLink(m) ? <a href={markerLink(m)}>{markerName(m)}</a> : markerName(m)}</dt>
-                  <dd>{describeMarker(m)}</dd>
-                </div>
-              ))}
-            </dl>
-            <p class="meta">{KINDS.culinary.explanation}</p>
-          </details>
-        )
-      }
-      <p>
-        <a href={href('what-is-nova/')}>How the NOVA classification works</a>
-      </p>
-    </section>
 
     <section aria-labelledby="ingredients">
       <h2 id="ingredients">Ingredients</h2>
       {
         p.markers.some((m) => m.group >= 3 && m.type !== 'categories') && (
-          <p class="legend meta" data-pagefind-ignore>
-            <mark class="key key-4">Highlighted</mark> ingredients are markers of ultra-processing (group 4);
-            <mark class="key key-3">lightly highlighted</mark> ones are culinary ingredients that make a food processed (group 3).
+          <p class="legend" data-pagefind-ignore>
+            <mark class="key key-4">Ultra-processing</mark>
+            <mark class="key key-3">Processing</mark>
+            <span class="meta">signs are highlighted</span>
           </p>
         )
       }
       <p class="ingredient-list">
         <IngredientList items={p.ingredients} />
       </p>
-      <p class="meta" data-pagefind-ignore>
-        {p.ingredientCount} ingredient{p.ingredientCount === 1 ? '' : 's'} counted, including sub-ingredients.
-        {
-          p.unplacedMarkers.length > 0 &&
-            ` Also detected but not matched to a specific ingredient: ${p.unplacedMarkers.map((t) => markerLabel(t, t.match(/^en:e\d/) ? 'additives' : 'ingredients')).join(', ')}.`
-        }
-      </p>
       {
         p.additives.length > 0 && (
-          <>
-            <h3>Additives ({p.additives.length})</h3>
-            <ul class="additives">
-              {p.additives.map((a) => {
-                const info = markerByTag.get(a);
-                return <li>{info ? <a href={markerHref(info)}>{additiveLabel(a)}</a> : additiveLabel(a)}</li>;
-              })}
-            </ul>
-          </>
+          <p class="additives">
+            <strong>Additives:</strong>{' '}
+            {p.additives.map((a, i) => {
+              const info = markerByTag.get(a);
+              return (
+                <>
+                  {i > 0 && ', '}
+                  {info ? <a href={markerHref(info)}>{additiveLabel(a)}</a> : additiveLabel(a)}
+                </>
+              );
+            })}
+          </p>
+        )
+      }
+      {
+        p.unplacedMarkers.length > 0 && (
+          <p class="meta" data-pagefind-ignore>
+            Also detected, but not matched to one ingredient:{' '}
+            {p.unplacedMarkers.map((t) => markerLabel(t, t.match(/^en:e\d/) ? 'additives' : 'ingredients')).join(', ')}.
+          </p>
         )
       }
       <details data-pagefind-ignore>
-        <summary>Ingredient list as written on the pack</summary>
+        <summary>As written on the pack</summary>
         <p>{p.ingredientsText}</p>
       </details>
     </section>
 
-    <div data-pagefind-ignore>
-      {
-        category && (
-          <section aria-labelledby="compare">
-            <h2 id="compare">How it compares with other {lowerFirst(category.name)}</h2>
-            <p>
-              We track {category.count} {lowerFirst(category.name)}. {percent(category.novaCounts[4], category.count)}% of
-              them are ultra-processed. Sorted from least to most processed, this product ranks
-              <strong>{ordinal(p.categoryRank!)} of {category.count}</strong>.
-            </p>
-            <NovaBar counts={category.novaCounts} current={p.nova} />
-            <p class="meta">
-              The ranking sorts by NOVA group, then by the number of ultra-processing markers, additives and ingredients.
-              It is our own ordering for comparison, not part of NOVA.
-            </p>
-          </section>
-        )
-      }
-
-      <section aria-labelledby="alternatives">
-        <h2 id="alternatives">Less processed alternatives</h2>
-        {p.nova === 1 && <p>This product is already in the least processed group.</p>}
-        {
-          p.nova > 1 && alternatives.length === 0 && (
-            <p>
-              We did not find a less processed product in the same category among the products on this site.
-              {category && (
-                <>
-                  {' '}
-                  Browse <a href={categoryHref(category)}>{lowerFirst(category.name)} from least to most processed</a>.
-                </>
-              )}
-            </p>
-          )
-        }
-        {
-          alternatives.length > 0 && altCategory && (
-            <>
-              <p>
-                {alternatives.length === 1 ? 'This product' : `These ${alternatives.length} products`} from{' '}
-                <a href={categoryHref(altCategory)}>{lowerFirst(altCategory.name)}</a>
-                {alternatives.length === 1 ? ' is' : ' are'} in a lower NOVA group. Check that they suit what you need it for: being
-                less processed doesn't mean healthier in every respect.
-              </p>
-              <div class="table-scroll">
-                <table>
-                  <caption class="visually-hidden">Comparison of {p.name} with less processed alternatives</caption>
-                  <thead>
-                    <tr>
-                      <th scope="col">Product</th>
-                      <th scope="col" class="num">NOVA</th>
-                      <th scope="col" class="num">Ingredients</th>
-                      <th scope="col" class="num">Additives</th>
-                      <th scope="col" class="num">Group 4 markers</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {[p, ...alternatives].map((x) => (
-                      <tr class:list={{ current: x.code === p.code }}>
-                        <th scope="row">
-                          {x.code === p.code ? (
-                            <>
-                              {x.name} <span class="meta">(this product)</span>
-                            </>
-                          ) : (
-                            <a href={productHref(x)}>{x.name}</a>
-                          )}
-                          {x.brand && <span class="meta"> · {x.brand}</span>}
-                        </th>
-                        <td class="num">
-                          <NovaBadge group={x.nova} />
-                        </td>
-                        <td class="num">{x.ingredientCount}</td>
-                        <td class="num">{x.additives.length}</td>
-                        <td class="num">{g4(x)}</td>
-                      </tr>
+    {
+      (deciding.length > 0 || weaker.length > 0) && (
+        <section aria-labelledby="why" data-pagefind-ignore>
+          <h2 id="why">
+            {p.nova === 4 ? 'What makes it ultra-processed' : p.nova === 3 ? 'What makes it processed' : `Why it is in group ${p.nova}`}
+          </h2>
+          {groupByKind(deciding).map(([kind, items]) => (
+            <div class={`kind kind-${p.nova}`}>
+              <h3>{KINDS[kind].title}</h3>
+              <p class="kind-note">{KINDS[kind].short}</p>
+              <ul class="marker-list">
+                {items.slice(0, SHOW_MARKERS).map((m) => (
+                  <li>
+                    {markerLink(m) ? <a href={markerLink(m)}>{markerName(m)}</a> : <strong>{markerName(m)}</strong>}{' '}
+                    <span>{firstSentence(describeMarker(m))}</span>
+                  </li>
+                ))}
+              </ul>
+              {items.length > SHOW_MARKERS && (
+                <details>
+                  <summary>Show {items.length - SHOW_MARKERS} more</summary>
+                  <ul class="marker-list">
+                    {items.slice(SHOW_MARKERS).map((m) => (
+                      <li>
+                        {markerLink(m) ? <a href={markerLink(m)}>{markerName(m)}</a> : <strong>{markerName(m)}</strong>}{' '}
+                        <span>{firstSentence(describeMarker(m))}</span>
+                      </li>
                     ))}
-                  </tbody>
-                </table>
-              </div>
-            </>
+                  </ul>
+                </details>
+              )}
+            </div>
+          ))}
+          {weaker.length > 0 && (
+            <details>
+              <summary>
+                {weaker.length === 1 ? '1 ingredient' : `${weaker.length} ingredients`} that would only make it processed
+              </summary>
+              <p class="kind-note">{KINDS.culinary.short}</p>
+              <ul class="marker-list">
+                {weaker.map((m) => (
+                  <li>
+                    {markerLink(m) ? <a href={markerLink(m)}>{markerName(m)}</a> : <strong>{markerName(m)}</strong>}{' '}
+                    <span>{firstSentence(describeMarker(m))}</span>
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
+          <p class="meta">
+            <a href={href('what-is-nova/')}>How the NOVA groups work</a>
+          </p>
+        </section>
+      )
+    }
+
+    {
+      category && (
+        <section aria-labelledby="compare" data-pagefind-ignore>
+          <h2 id="compare">
+            Among {category.count} {lowerFirst(category.name)}
+          </h2>
+          <p>
+            From least to most processed, this one ranks <strong>{ordinal(p.categoryRank!)}</strong>.{' '}
+            {percent(category.novaCounts[4], category.count)}% of the {lowerFirst(category.name)} here are ultra-processed.
+          </p>
+          <NovaBar counts={category.novaCounts} current={p.nova} />
+          <p class="meta">
+            Ranked by NOVA group, then by the number of ultra-processing signs, additives and ingredients. Our ordering, not
+            part of NOVA.
+          </p>
+          {related.length > 0 && <ProductList products={related} />}
+          <p>
+            <a href={categoryHref(category)}>
+              All {category.count} {lowerFirst(category.name)}, least processed first
+            </a>
+          </p>
+        </section>
+      )
+    }
+
+    <AdSlot name="product-bottom" />
+
+    <section aria-labelledby="about-data" class="about-data" data-pagefind-ignore>
+      <h2 id="about-data">About this information</h2>
+      <ul>
+        <li>
+          Data from <a href={offProductUrl(p.code)}>this product on Open Food Facts</a> (barcode {p.code}, last edited
+          {formatDate(p.lastModified)}), available under the
+          <a href="https://opendatacommons.org/licenses/odbl/1-0/">Open Database License</a>. If something is wrong or the
+          recipe has changed, you can correct it there.
+        </li>
+        {
+          image && (
+            <li>
+              Photo: Open Food Facts contributors, <a href="https://creativecommons.org/licenses/by-sa/3.0/">CC BY-SA 3.0</a>.
+            </li>
           )
         }
-      </section>
-
-      {
-        related.length > 0 && category && (
-          <section aria-labelledby="related">
-            <h2 id="related">More {lowerFirst(category.name)}</h2>
-            <ProductList products={related} />
-            <p>
-              <a href={categoryHref(category)}>All {category.count} {lowerFirst(category.name)}, least processed first</a>
-            </p>
-          </section>
-        )
-      }
-
-      <AdSlot name="product-bottom" />
-
-      <section aria-labelledby="about-data" class="about-data">
-        <h2 id="about-data">About this information</h2>
-        <p>
-          Product data comes from <a href={offProductUrl(p.code)}>this product's page on Open Food Facts</a>, last edited
-          {formatDate(p.lastModified)}. Open Food Facts is a collaborative database: anyone can add or correct a product,
-          and the data is available under the Open Database License. If the recipe has changed or something here is wrong,
-          you can fix it there and the next update of this site will pick it up.
-        </p>
-        <p>
-          The NOVA group is an automated estimate. Open Food Facts calculates it from the ingredient list, additives and
-          category entered by contributors, so a missing or mistyped ingredient can change the result.
-        </p>
+        <li>The NOVA group is an automated estimate from crowdsourced data: a missing or mistyped ingredient can change it.</li>
         {
           p.nutriscore && (
-            <p>
-              NOVA describes how much a food is processed, not its nutritional quality. For that, Open Food Facts gives
-              this product a Nutri-Score of <strong>{p.nutriscore.toUpperCase()}</strong> on a scale from A (best) to E.
-              The two often disagree: plain sugar is minimally processed but scores poorly on nutrition.
-            </p>
+            <li>
+              NOVA measures processing, not nutrition. For nutrition, Open Food Facts gives this product a Nutri-Score of{' '}
+              {p.nutriscore.toUpperCase()} (from A, best, to E).
+            </li>
           )
         }
-        <p class="meta">
-          This page is general information, not medical or dietary advice. If you have a medical condition or allergy,
-          read the label on the pack and ask a qualified professional.
-        </p>
-      </section>
-    </div>
+        <li>General information, not medical or dietary advice. Check the pack if you have an allergy.</li>
+      </ul>
+    </section>
   </article>
 </Base>
 
 <style>
+  .product-head {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    column-gap: 1.25rem;
+    align-items: start;
+  }
+  .product-head h1 {
+    grid-column: 1;
+    margin-bottom: 0.35rem;
+    /* product names are long: smaller than other pages' headings on phones */
+    font-size: clamp(1.7rem, 5vw, 3rem);
+  }
   .product-meta {
+    grid-column: 1;
     display: flex;
     flex-wrap: wrap;
     gap: 0.25rem 1rem;
     color: var(--muted);
     font-size: 0.95rem;
+    margin: 0;
+  }
+  .hero {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    width: 6.5rem;
+    height: 6.5rem;
+    object-fit: contain;
+    background: var(--img-bg);
+    border-radius: 2px;
+    padding: 0.3rem;
+  }
+  @media (min-width: 52rem) {
+    .hero {
+      width: 11rem;
+      height: 11rem;
+      padding: 0.5rem;
+    }
   }
 
   .verdict {
-    display: flex;
-    gap: 1.25rem;
-    align-items: flex-start;
-    margin: 1.75rem 0 0.5rem;
-    padding: 1.25rem 0;
-    border-top: 2px solid var(--rule-strong);
+    margin: 1.5rem 0 0.5rem;
+    padding: 1.25rem 0 1rem;
+    border-top: 3px solid var(--verdict);
     border-bottom: 1px solid var(--rule);
   }
-
-  .verdict p {
-    margin-bottom: 0;
+  .verdict-1 {
+    --verdict: var(--nova-1);
+  }
+  .verdict-2 {
+    --verdict: var(--nova-2);
+  }
+  .verdict-3 {
+    --verdict: var(--nova-3);
+  }
+  .verdict-4 {
+    --verdict: var(--nova-4);
+  }
+  .answer {
+    margin: 0 0 1.1rem;
+    font-size: clamp(1.4rem, 3.5vw, 1.9rem);
+  }
+  .verdict :global(.nova-scale) {
+    max-width: 34rem;
+    margin-bottom: 1.25rem;
+  }
+  .because {
+    margin: 0 0 0.6rem;
   }
 
-  .verdict-heading {
-    margin: 0 0 0.4rem;
-    font-size: clamp(1.25rem, 2.5vw, 1.6rem);
+  .chips {
+    list-style: none;
+    padding: 0;
+    margin: 0 0 1rem;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.45rem;
   }
-
-  .product-image {
-    margin: 0;
+  .chips a {
+    display: inline-block;
+    padding: 0.25rem 0.65rem;
+    border: 1px solid var(--verdict);
+    border-radius: 2px;
+    color: var(--text);
+    text-decoration: none;
+    font-size: 0.95rem;
   }
-  .product-image img {
-    max-height: 22rem;
-    width: auto;
-    margin: 0 auto;
+  .chips a:hover {
     background: var(--bg-subtle);
   }
-  .product-image figcaption {
-    margin-top: 0.4rem;
-    text-align: center;
+  .chips a.more {
+    border-color: var(--rule);
+    color: var(--link);
+    text-decoration: underline;
+  }
+
+  .facts {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem 1rem;
+  }
+  .facts ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem 1.1rem;
+    color: var(--muted);
+    font-size: 0.9rem;
+    font-stretch: 90%;
+  }
+
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.4rem 0.6rem;
+    font-size: 0.875rem;
+  }
+  .legend .key {
+    color: inherit;
+    padding: 0 0.3em;
+  }
+  .key-4 {
+    background: var(--mark-4-bg);
+    box-shadow: inset 0 -2px 0 var(--mark-4-line);
+    font-weight: 650;
+  }
+  .key-3 {
+    background: var(--mark-3-bg);
+    box-shadow: inset 0 -1px 0 var(--mark-3-line);
+  }
+  .ingredient-list {
+    font-size: 1.1rem;
+    line-height: 1.75;
+  }
+
+  details {
+    margin: 0.75rem 0 1rem;
+  }
+  summary {
+    cursor: pointer;
+    font-weight: 600;
   }
 
   .kind {
-    margin: 1.5rem 0 2rem;
+    margin: 1.25rem 0 1.5rem;
     padding-left: 1rem;
     border-left: 4px solid var(--rule);
   }
@@ -428,78 +528,34 @@ const markerLink = (m: Marker) => {
     border-left-color: var(--nova-2);
   }
   .kind h3 {
-    margin-top: 0;
+    margin: 0 0 0.2rem;
   }
-  .kind .count {
+  .kind-note {
     color: var(--muted);
-    font-weight: 500;
+    font-size: 0.95rem;
+    margin-bottom: 0.6rem;
   }
-  .kind-explanation {
-    color: var(--muted);
-  }
-  .markers {
-    margin: 0.75rem 0 0;
-  }
-  .markers > div {
-    margin-bottom: 0.65rem;
-  }
-  .markers dt {
-    font-weight: 700;
-    display: inline;
-  }
-  .markers dt::after {
-    content: ': ';
-    font-weight: 400;
-  }
-  .markers dd {
-    display: inline;
+  .marker-list {
+    list-style: none;
+    padding: 0;
     margin: 0;
   }
-
-  details {
-    margin: 1rem 0;
+  .marker-list li {
+    margin-bottom: 0.5rem;
   }
-  summary {
-    cursor: pointer;
-    font-weight: 600;
-  }
-
-  .ingredient-list {
-    font-size: 1.1rem;
-    line-height: 1.75;
-  }
-
-  .legend .key {
-    color: inherit;
-    padding: 0 0.2em;
-  }
-  .key-4 {
-    background: var(--mark-4-bg);
-    box-shadow: inset 0 -2px 0 var(--mark-4-line);
-    font-weight: 650;
-  }
-  .key-3 {
-    background: var(--mark-3-bg);
-    box-shadow: inset 0 -1px 0 var(--mark-3-line);
-  }
-
-  .additives {
-    columns: 2 16rem;
-    padding-left: 1.2rem;
-  }
-
-  tr.current th,
-  tr.current td {
-    background: var(--bg-subtle);
-  }
-  td.num :global(.nova-badge) {
-    margin-left: auto;
+  .marker-list a,
+  .marker-list strong {
+    font-weight: 700;
   }
 
   .about-data {
     color: var(--muted);
+    font-size: 0.925rem;
   }
-  .about-data strong {
-    color: var(--text);
+  .about-data ul {
+    padding-left: 1.1rem;
+  }
+  .about-data li {
+    margin-bottom: 0.4rem;
   }
 </style>

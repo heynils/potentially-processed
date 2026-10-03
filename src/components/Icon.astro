@@ -1,0 +1,36 @@
+---
+// Inline SVG icons from Lucide (https://lucide.dev, ISC licence, via the
+// lucide-static package). They are read at build time, so a page carries
+// only the few icons it uses: no icon font, no JavaScript, no extra request.
+// Icons inherit the text colour (stroke="currentColor").
+import apple from 'lucide-static/icons/apple.svg?raw';
+import can from 'lucide-static/icons/can.svg?raw';
+import chefHat from 'lucide-static/icons/chef-hat.svg?raw';
+import factory from 'lucide-static/icons/factory.svg?raw';
+import share from 'lucide-static/icons/share-2.svg?raw';
+
+const ICONS = { apple, can, 'chef-hat': chefHat, factory, share } as const;
+export type IconName = keyof typeof ICONS;
+
+interface Props {
+  name: IconName;
+  size?: number;
+  class?: string;
+  /** Accessible name; without one the icon is decorative and hidden from screen readers. */
+  label?: string;
+}
+
+const { name, size = 24, class: className = '', label } = Astro.props;
+const a11y = label ? `role="img" aria-label="${label.replace(/"/g, '&quot;')}"` : 'aria-hidden="true" focusable="false"';
+const svg = ICONS[name]
+  .replace(/<!--[\s\S]*?-->/g, '')
+  .replace(/\s*class="[^"]*"/, '')
+  .replace('width="24"', `width="${size}"`)
+  .replace('height="24"', `height="${size}"`)
+  .replace('<svg', `<svg class="icon ${className}" ${a11y}`)
+  .replace(/\s+/g, ' ')
+  .replace(/>\s+</g, '><')
+  .trim();
+---
+
+<Fragment set:html={svg} />

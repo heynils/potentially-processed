@@ -29,6 +29,11 @@ const fullTitle =
 const canonical = new URL(Astro.url.pathname, Astro.site).href;
 const adsenseClient = import.meta.env.PUBLIC_ADSENSE_CLIENT;
 const year = new Date().getFullYear();
+const navLinks: [string, string][] = [
+  ['categories/', 'Categories'],
+  ['what-is-nova/', 'What is NOVA?'],
+  ['about/', 'About the data'],
+];
 ---
 
 <!doctype html>
@@ -39,8 +44,10 @@ const year = new Date().getFullYear();
     <title>{fullTitle}</title>
     <meta name="description" content={description} />
     <link rel="canonical" href={canonical} />
-    {noindex && <meta name="robots" content="noindex" />}
+    <meta name="robots" content={noindex ? 'noindex' : 'max-image-preview:large'} />
     <link rel="preload" href={archivoLatin} as="font" type="font/woff2" crossorigin />
+    <!-- product photos come from Open Food Facts' image server -->
+    <link rel="preconnect" href="https://images.openfoodfacts.org" />
     <link rel="icon" href={href('favicon.svg')} type="image/svg+xml" />
     <link rel="sitemap" href={href('sitemap-index.xml')} />
     <meta name="color-scheme" content="light dark" />
@@ -89,13 +96,20 @@ const year = new Date().getFullYear();
           </span>
           {SITE.name}
         </a>
-        <nav aria-label="Main">
+        <nav class="nav-wide" aria-label="Main">
           <ul>
-            <li><a href={href('categories/')}>Categories</a></li>
-            <li><a href={href('what-is-nova/')}>What is NOVA?</a></li>
-            <li><a href={href('about/')}>About the data</a></li>
+            {navLinks.map(([path, text]) => <li><a href={href(path)}>{text}</a></li>)}
           </ul>
         </nav>
+        {/* On phones the links fold into a menu, so search and content start higher. No JS: <details> does the toggling. */}
+        <details class="nav-menu">
+          <summary>Menu</summary>
+          <nav aria-label="Main">
+            <ul>
+              {navLinks.map(([path, text]) => <li><a href={href(path)}>{text}</a></li>)}
+            </ul>
+          </nav>
+        </details>
         {!hideHeaderSearch && <SearchBox variant="compact" />}
       </div>
     </header>
@@ -147,12 +161,71 @@ const year = new Date().getFullYear();
   }
 
   .header-inner {
+    position: relative;
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     gap: 0.75rem 2rem;
     padding-top: 1rem;
     padding-bottom: 1rem;
+  }
+
+  .nav-menu {
+    display: none;
+  }
+
+  @media (max-width: 40rem) {
+    .site-header {
+      margin-bottom: 1.25rem;
+    }
+    .header-inner {
+      gap: 0.6rem 1rem;
+      padding-top: 0.7rem;
+      padding-bottom: 0.8rem;
+    }
+    .nav-wide {
+      display: none;
+    }
+    .nav-menu {
+      display: block;
+      margin-left: auto;
+    }
+    .nav-menu summary {
+      list-style: none;
+      cursor: pointer;
+      font-weight: 650;
+      font-stretch: 90%;
+      padding: 0.3rem 0.7rem;
+      border: 1px solid var(--rule);
+      border-radius: 2px;
+    }
+    .nav-menu summary::-webkit-details-marker {
+      display: none;
+    }
+    .nav-menu[open] summary {
+      border-color: var(--text);
+    }
+    .nav-menu nav {
+      position: absolute;
+      z-index: 10;
+      top: 3.2rem;
+      left: var(--gutter);
+      right: var(--gutter);
+      background: var(--bg);
+      border: 1px solid var(--text);
+      border-radius: 2px;
+    }
+    .nav-menu ul {
+      flex-direction: column;
+      gap: 0;
+    }
+    .nav-menu li + li {
+      border-top: 1px solid var(--rule);
+    }
+    .nav-menu a {
+      display: block;
+      padding: 0.75rem 1rem;
+    }
   }
 
   .brand {

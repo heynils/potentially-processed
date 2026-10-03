@@ -2,6 +2,7 @@
 import type { NovaGroup } from '../../pipeline/lib/types.ts';
 import Base from '../layouts/Base.astro';
 import NovaBadge from '../components/NovaBadge.astro';
+import NovaScale from '../components/NovaScale.astro';
 import { href, markerByTag, markerHref } from '../lib/data.ts';
 import { NOVA } from '../lib/nova.ts';
 
@@ -21,6 +22,8 @@ const link = (tag: string, text: string) => {
       NOVA is a way of classifying food by the extent and purpose of the industrial processing it has been through,
       rather than by the nutrients it contains. It sorts every food and drink into one of four groups.
     </p>
+
+    <NovaScale variant="explain" />
 
     <p>
       It was developed by researchers at the Center for Epidemiological Studies in Health and Nutrition (NUPENS) at the

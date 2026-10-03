@@ -10,6 +10,8 @@
 :root {
   --bg: #ffffff;
   --bg-subtle: #f3f5f7;
+  /* behind product photos; most packs are shot on white */
+  --img-bg: #f3f5f7;
   --text: #15181d;
   --muted: #565d6b;
   --rule: #d8dce2;
@@ -45,6 +47,8 @@
   :root {
     --bg: #111317;
     --bg-subtle: #1a1d23;
+    /* a light tile keeps pack photos true to colour in dark mode */
+    --img-bg: #e4e7eb;
     --text: #e7e9ed;
     --muted: #a3aab7;
     --rule: #2e333c;

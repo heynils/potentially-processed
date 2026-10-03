@@ -38,7 +38,10 @@ properties, `.ts` extensions in imports.
   - `config.ts` all tunables (target size, thresholds, generic categories, aliases)
 - `src/` Astro site; reads `data/site/` at build time via `src/lib/data.ts`
   - `src/lib/explain.ts` curated marker descriptions and "kinds" (editorial content)
-  - `src/lib/nova.ts` NOVA group definitions (Monteiro et al. 2019)
+  - `src/lib/nova.ts` NOVA group definitions (Monteiro et al. 2019), short labels, icons
+  - `src/components/` `NovaScale` (the 1-4 scale, farm to factory), `ProductThumb` /
+    `ProductList` / `ProductTiles` (products with photos), `Icon` (Lucide SVGs inlined
+    at build time from `lucide-static`; add icons by importing them there)
 - `.github/workflows/deploy.yml` weekly data refresh + build + deploy to Pages
 - `data/` is gitignored: never commit the OFF dump or generated data
 
@@ -54,6 +57,18 @@ properties, `.ts` extensions in imports.
   green, no identical rounded cards with soft shadows, no all-caps eyebrow
   labels, no "→" on links. Lines under 80 characters, visible focus,
   responsive, respect reduced motion. Colour is reserved for the NOVA scale.
+- Pages lead with the answer and keep text short (Nils: "a lot of text" before
+  the Oct 2026 redesign). Product page order: verdict (scale + reason chips),
+  alternatives as photo tiles, highlighted ingredients, explanations (first
+  sentence per marker, long lists folded), ranking, compact "about". Put depth
+  on marker pages and behind `<details>`, not in front of the verdict.
+- Product photos are hotlinked from images.openfoodfacts.org, never copied:
+  100/200/400 px versions differ only in the URL suffix (`imageAt()` in
+  `src/lib/data.ts`). Thumbs are lazy, in fixed boxes (no layout shift), with
+  the group icon when a product has no photo.
+- Every indexed page sets Pagefind's `image` meta explicitly (`none` when it
+  has no photo); otherwise Pagefind uses the first photo on the page, which on
+  a product page can be an alternative's.
 
 ## Must-haves (don't remove)
 
