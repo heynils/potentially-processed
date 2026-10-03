@@ -5,17 +5,18 @@ import { formatNumber, markerHref, markers, products } from '../../lib/data.ts';
 const list = markers.filter((m) => m.kind === 'additive');
 const ultra = list.filter((m) => m.group === 4);
 const processed = list.filter((m) => m.group === 3);
+const neither = list.filter((m) => m.group === null);
 const label = (m: (typeof list)[number]) => (m.eNumber ? `${m.eNumber} ${m.name}` : m.name);
 ---
 
 <Base
-  title="Additives that mark a food as processed or ultra-processed"
-  description={`${list.length} additives that Open Food Facts uses to place foods in a NOVA group, with how often each appears among ${formatNumber(products.length)} products.`}
+  title="Which additives make a food ultra-processed?"
+  description={`${ultra.length + processed.length} additives that Open Food Facts uses to place foods in a NOVA group, and ${neither.length} common ones it doesn't, with how often each appears among ${formatNumber(products.length)} products.`}
 >
   <h1>Additives</h1>
   <p class="lede">
-    The additives that Open Food Facts uses as NOVA markers, by how many of the {formatNumber(products.length)} products
-    on this site contain them.
+    The additives that Open Food Facts uses as NOVA markers, and common ones it doesn't, by how many of the
+    {formatNumber(products.length)} products on this site contain them.
   </p>
   {
     ultra.length > 0 && (
@@ -37,6 +38,21 @@ const label = (m: (typeof list)[number]) => (m.eNumber ? `${m.eNumber} ${m.name}
         <h2>Markers of processing (group 3)</h2>
         <ul class="markers">
           {processed.map((m) => (
+            <li>
+              <a href={markerHref(m)}>{label(m)}</a> <span class="meta">{formatNumber(m.count)} products</span>
+            </li>
+          ))}
+        </ul>
+      </section>
+    )
+  }
+  {
+    neither.length > 0 && (
+      <section>
+        <h2>Common additives that are not NOVA markers</h2>
+        <p>These appear in many products but don't, on their own, raise a product's NOVA group.</p>
+        <ul class="markers">
+          {neither.map((m) => (
             <li>
               <a href={markerHref(m)}>{label(m)}</a> <span class="meta">{formatNumber(m.count)} products</span>
             </li>

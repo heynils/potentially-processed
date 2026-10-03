@@ -3,7 +3,7 @@
 
 import { slugify, productSlug } from './slug.ts';
 import { humanizeTag, type Taxonomies, type Taxonomy } from './taxonomy.ts';
-import { compareRank } from './normalize.ts';
+import { compareRank, tidyName } from './normalize.ts';
 import type {
   Candidate,
   Ingredient,
@@ -38,6 +38,54 @@ const emptyNovaCounts = (): Record<NovaGroup, number> => ({ 1: 0, 2: 0, 3: 0, 4:
 export function marketFirst(priority: Set<string>): (a: Candidate, b: Candidate) => number {
   const inMarket = (c: Candidate) => (c.countries.some((t) => priority.has(t)) ? 1 : 0);
   return (a, b) => inMarket(b) - inMarket(a) || compareRank(a, b);
+}
+
+/**
+ * Ordering that puts products already published on the live site first.
+ *
+ * Search engines rank pages, so a page that drops out of a weekly refresh
+ * loses whatever traffic it had earned. With published products first in the
+ * pool, selection keeps them for as long as they remain eligible and in the
+ * pool; new products fill the places of ones that drop out.
+ */
+export function publishedFirst(
+  compare: (a: Candidate, b: Candidate) => number,
+  published: Set<string>,
+): (a: Candidate, b: Candidate) => number {
+  if (!published.size) return compare;
+  const pub = (c: Candidate) => (published.has(c.code) ? 1 : 0);
+  return (a, b) => pub(b) - pub(a) || compare(a, b);
+}
+
+/**
+ * Product code -> every path it has been published under, from the live
+ * site's paths, e.g. "products/heinz-tomato-ketchup-5000157024671/". A code
+ * can have several: its current path plus old ones that now redirect.
+ */
+export function parsePublished(paths: string[]): Map<string, string[]> {
+  const byCode = new Map<string, string[]>();
+  for (const path of paths) {
+    const m = path.match(/^products\/(?:[a-z0-9-]*-)?(\d{8,14})\/$/);
+    if (!m) continue;
+    const list = byCode.get(m[1]) ?? [];
+    if (!list.includes(path)) list.push(path);
+    byCode.set(m[1], list);
+  }
+  return byCode;
+}
+
+/**
+ * Old path -> current path for every path a still-listed product was
+ * published under that isn't its current one (OFF contributors rename
+ * products), so old URLs keep working.
+ */
+export function slugRedirects(published: Map<string, string[]>, products: Pick<SiteProduct, 'code' | 'slug'>[]): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const p of products) {
+    const now = `products/${p.slug}/`;
+    for (const old of published.get(p.code) ?? []) if (old !== now) out[old] = now;
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------------------
@@ -261,6 +309,13 @@ export function splitAdditiveName(name: string): [string | null, string] {
 
 const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
+/** "PHILADELPHIA" -> "Philadelphia", "oreo" -> "Oreo"; mixed case is left alone. */
+export function tidyBrand(brand: string | null): string | null {
+  if (!brand) return null;
+  const t = tidyName(brand);
+  return /[A-Z]/.test(t) ? t : t.replace(/(^|[\s\-/(.&])([a-z])/g, (_, p: string, c: string) => p + c.toUpperCase());
+}
+
 export function buildSite(selected: Candidate[], tax: Taxonomies, opts: BuildOptions): BuiltSite {
   const cats = tax.categories;
   const rankIndex = new Map(selected.map((c, i) => [c.code, i]));
@@ -400,7 +455,7 @@ export function buildSite(selected: Candidate[], tax: Taxonomies, opts: BuildOpt
       code: c.code,
       slug: productSlug(c.name, c.brand, c.code),
       name: c.name,
-      brand: c.brand,
+      brand: tidyBrand(c.brand),
       quantity: c.quantity,
       nova: c.nova,
       markers: c.markers,
@@ -422,14 +477,30 @@ export function buildSite(selected: Candidate[], tax: Taxonomies, opts: BuildOpt
   });
 
   // --- markers --------------------------------------------------------------
-  const markerProducts = new Map<string, { group: NovaGroup; type: Marker['type']; codes: string[] }>();
+  const markerProducts = new Map<string, { group: NovaGroup | null; type: Marker['type']; codes: string[] }>();
   for (const c of selected) {
     for (const m of c.markers) {
       if (m.type === 'categories' || m.group < 3) continue;
       let entry = markerProducts.get(m.tag);
       if (!entry) markerProducts.set(m.tag, (entry = { group: m.group, type: m.type, codes: [] }));
-      entry.group = Math.max(entry.group, m.group) as NovaGroup;
+      entry.group = Math.max(entry.group ?? 0, m.group) as NovaGroup;
       if (!entry.codes.includes(c.code)) entry.codes.push(c.code);
+    }
+  }
+
+  // Additives that are *not* NOVA markers get pages too: "is citric acid
+  // ultra-processed?" is as common a question as "is maltodextrin?", and
+  // "no" is a useful answer. OFF lists every marker that applies to a product,
+  // weaker group-3 ones included, so an additive that is common here but never
+  // listed as a marker is not one. Excluded: anything whose taxonomy ancestor
+  // or base number is a marker (E322i is a form of the marker E322).
+  const markerTags = new Set(selected.flatMap((c) => c.markers.map((m) => m.tag)));
+  for (const c of selected) {
+    for (const a of new Set(c.additives)) {
+      if ([...ancestorsOf(a)].some((t) => markerTags.has(t))) continue;
+      let entry = markerProducts.get(a);
+      if (!entry) markerProducts.set(a, (entry = { group: null, type: 'additives', codes: [] }));
+      entry.codes.push(c.code);
     }
   }
   const productByCode = new Map(products.map((p) => [p.code, p]));

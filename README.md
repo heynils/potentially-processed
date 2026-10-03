@@ -142,6 +142,35 @@ the site renders.
   ingredients. Each product's alternatives are the most popular lower-group
   products from its most specific category page, falling back to the parent
   category.
+- **Additives that aren't markers.** People ask "is citric acid
+  ultra-processed?" as often as "is maltodextrin?", and "no" is a useful
+  answer. Every additive in 5 or more products that OFF never lists as a
+  marker gets a page that says so, with how processed the products
+  containing it are anyway. OFF keeps its additive rules in code, not in the
+  taxonomy files, but it lists *every* marker that applies to a product,
+  including weaker group 3 ones. So an additive that is common here and never
+  listed is not a marker. Forms of a marker, such as E322i (a form of the
+  marker E322), are excluded.
+
+### Keeping URLs stable
+
+Search engines rank individual URLs, so a page that disappears loses the
+traffic it has earned, and every link pointing to it breaks. Two things
+would otherwise cause that every week:
+
+- **Re-ranking.** Products drift in and out of the top 5,000 as scan counts
+  change, and the whole ranking can reshuffle when OFF rolls its scan
+  statistics over to a new year.
+- **Renames.** Contributors edit product names, which changes the slug.
+
+So the live site is treated as the record of what is published.
+`pipeline/fetch-published.ts` reads its sitemap and its `redirects.json`, and
+the select stage puts those products first in the pool. They keep their
+place for as long as they remain eligible, and new products fill only the
+places freed by ones that drop out. A product whose slug changed keeps its
+new URL, and Astro writes a redirect page at every old one. The redirect
+list is published at `/redirects.json` and read back by the next build, so
+redirects last as long as the product stays on the site, not just one week.
 
 ### Numbers from the first real run (export of 3 October 2026)
 
@@ -164,7 +193,8 @@ On the site, 759 products are in group 1, 195 in group 2, 1,587 in group 3
 and 2,459 in group 4. 90% of the products in groups 2 to 4 have at least one
 less-processed alternative, and 507 products were pulled in specifically to
 make that possible. There are 436 category pages and 111 ingredient and
-additive pages. The extract stage takes about 10 minutes on a
+additive pages, plus 63 pages for common additives that aren't markers. The
+extract stage takes about 10 minutes on a
 4-core machine, and it is CPU-bound on JSON parsing, not on the download.
 
 ## Local development
@@ -212,6 +242,9 @@ Mondays, and on demand.
   and goes straight to the select stage and the build.
 - The base URL comes from `actions/configure-pages`, so the same build works
   at `https://<user>.github.io/<repo>/` and later on a custom domain at `/`.
+- Before selecting products, it reads the live site's sitemap (see
+  [Keeping URLs stable](#keeping-urls-stable)). If the site can't be
+  reached, as on a first deploy, the build simply starts fresh.
 
 One-time setup, which only the repository owner can do:
 

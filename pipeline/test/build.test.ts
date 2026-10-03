@@ -7,8 +7,12 @@ import {
   hasImplausibleIngredients,
   ingredientAncestors,
   marketFirst,
+  parsePublished,
+  publishedFirst,
   selectProducts,
+  slugRedirects,
   splitAdditiveName,
+  tidyBrand,
   type BuildOptions,
 } from '../lib/build.ts';
 import { compareRank } from '../lib/normalize.ts';
@@ -93,7 +97,7 @@ test('buildSite: categories, ranking, alternatives and markers', () => {
   const selected = [
     candidate({ code: '1', name: 'Choc Biscuit', nova: 4, markers: [e322], additives: ['en:e322'], categories: ['en:snacks', 'en:sweet-snacks', 'en:biscuits', 'en:chocolate-biscuits'] }),
     candidate({ code: '2', name: 'Choc Biscuit Lite', nova: 4, markers: [e322], categories: ['en:snacks', 'en:sweet-snacks', 'en:biscuits', 'en:chocolate-biscuits'] }),
-    candidate({ code: '3', name: 'Oat Biscuit', nova: 3, scans: 1 }),
+    candidate({ code: '3', name: 'Oat Biscuit', nova: 3, scans: 1, additives: ['en:e330', 'en:e322i'] }),
     candidate({ code: '4', name: 'Plain Oatcake', nova: 1, scans: 1 }),
   ];
   const site = buildSite(selected, tax, opts);
@@ -121,6 +125,12 @@ test('buildSite: categories, ranking, alternatives and markers', () => {
   assert.equal(m.slug, 'e322-lecithins');
   assert.deepEqual(m.classes, ['en:emulsifier']);
   assert.equal(site.labels.additiveClasses['en:emulsifier'].name, 'Emulsifier');
+
+  const citric = site.markers.find((x) => x.tag === 'en:e330');
+  assert.ok(citric, 'common additive that is never a marker gets a page');
+  assert.equal(citric.group, null);
+  assert.deepEqual(citric.codes, ['3']);
+  assert.equal(site.markers.find((x) => x.tag === 'en:e322i'), undefined, 'a form of a marker additive gets no "not a marker" page');
 });
 
 test('splitAdditiveName and slugs', () => {
@@ -149,4 +159,43 @@ test('hasImplausibleIngredients flags truncated lists only', () => {
   assert.equal(hasImplausibleIngredients(one('en:soya-lecithin'), ancestorsOf), true, 'a lone additive');
   assert.equal(hasImplausibleIngredients(one('en:whey-powder'), ancestorsOf), false);
   assert.equal(hasImplausibleIngredients(candidate({ code: 'x', ingredients: [{ id: 'en:oats', text: 'oats' }, { id: 'en:water', text: 'water' }] }), ancestorsOf), false);
+});
+
+test('published products keep their place and renamed ones get redirects', () => {
+  const published = parsePublished([
+    'products/old-name-1/',
+    'products/heinz-ketchup-12345678/',
+    'categories/biscuits/',
+    'products/not-a-product/',
+  ]);
+  assert.deepEqual([...published.keys()], ['12345678'], 'codes need 8+ digits, other paths ignored');
+  assert.deepEqual(published.get('12345678'), ['products/heinz-ketchup-12345678/']);
+
+  const live = parsePublished(['products/old-name-11111111/', 'products/older-name-11111111/', 'products/same-22222222/']);
+  assert.deepEqual(live.get('11111111'), ['products/old-name-11111111/', 'products/older-name-11111111/']);
+  const order = publishedFirst(compareRank, new Set(live.keys()));
+  const popular = candidate({ code: '99999999', scans: 1000 });
+  const kept = candidate({ code: '11111111', scans: 1 });
+  assert.deepEqual([popular, kept].sort(order).map((c) => c.code), ['11111111', '99999999']);
+  assert.equal(publishedFirst(compareRank, new Set()), compareRank, 'no list: plain ranking');
+
+  assert.deepEqual(
+    slugRedirects(live, [
+      { code: '11111111', slug: 'new-name-11111111' },
+      { code: '22222222', slug: 'same-22222222' },
+      { code: '33333333', slug: 'brand-new-33333333' },
+    ]),
+    {
+      'products/old-name-11111111/': 'products/new-name-11111111/',
+      'products/older-name-11111111/': 'products/new-name-11111111/',
+    },
+  );
+});
+
+test('tidyBrand fixes shouting and all-lowercase brands only', () => {
+  assert.equal(tidyBrand('PHILADELPHIA'), 'Philadelphia');
+  assert.equal(tidyBrand('oreo'), 'Oreo');
+  assert.equal(tidyBrand('m&s'), 'M&S');
+  assert.equal(tidyBrand("McVitie's"), "McVitie's");
+  assert.equal(tidyBrand(null), null);
 });

@@ -1,11 +1,15 @@
 // Stage 2: choose the products for the site and build everything the Astro
 // build reads: product pages, category pages, marker pages, alternatives.
 //
-//   node pipeline/select.ts [--work data/work] [--out data/site] [--taxonomies dir] [--source export|fixture]
+//   node pipeline/select.ts [--work data/work] [--out data/site] [--taxonomies dir]
+//                           [--source export|fixture] [--published data/published.txt]
 //
 // Reads data/work/candidates.jsonl, data/work/extract-stats.json and the
-// taxonomies in data/work/taxonomies/ (see fetch-taxonomies.ts).
+// taxonomies in data/work/taxonomies/ (see fetch-taxonomies.ts). With
+// --published (see fetch-published.ts), products already on the live site
+// are kept first and renamed ones get redirects (data/site/redirects.json).
 
+import { existsSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { parseArgs } from 'node:util';
 import {
@@ -27,7 +31,10 @@ import {
   hasImplausibleIngredients,
   ingredientAncestors,
   marketFirst,
+  parsePublished,
+  publishedFirst,
   selectProducts,
+  slugRedirects,
   type BuildOptions,
 } from './lib/build.ts';
 import { loadTaxonomies } from './lib/taxonomy.ts';
@@ -41,6 +48,7 @@ const { values: args } = parseArgs({
     taxonomies: { type: 'string' },
     source: { type: 'string', default: 'export' },
     'export-date': { type: 'string' },
+    published: { type: 'string' },
     target: { type: 'string', default: String(TARGET_PRODUCTS) },
     'min-category-page': { type: 'string', default: String(MIN_CATEGORY_PAGE) },
     'min-marker-page': { type: 'string', default: String(MIN_MARKER_PAGE) },
@@ -67,11 +75,18 @@ const pool: Candidate[] = (await readFile(`${args.work}/candidates.jsonl`, 'utf8
   .map((line) => JSON.parse(line));
 const tax = await loadTaxonomies(args.taxonomies ?? `${args.work}/taxonomies`);
 
+const publishedPaths =
+  args.published && existsSync(args.published) ? (await readFile(args.published, 'utf8')).split('\n').filter(Boolean) : [];
+const published = parsePublished(publishedPaths);
+
 const ancestorsOf = ingredientAncestors(tax.ingredients, opts.extraIngredientParents);
 const plausible = pool.filter((c) => !hasImplausibleIngredients(c, ancestorsOf));
-const unique = dedupe(plausible.sort(opts.compare));
+// Published products go first in the pool so they keep their place (and URL).
+const unique = dedupe(plausible.sort(publishedFirst(opts.compare, new Set(published.keys()))));
 const { selected, balanced } = selectProducts(unique, tax.categories, opts);
 const site = buildSite(selected, tax, opts);
+const redirects = slugRedirects(published, site.products);
+const keptCount = site.products.filter((p) => published.has(p.code)).length;
 
 const novaCounts: Record<NovaGroup, number> = { 1: 0, 2: 0, 3: 0, 4: 0 };
 for (const p of site.products) novaCounts[p.nova]++;
@@ -92,6 +107,12 @@ const meta: SiteMeta = {
     selected: site.products.length,
     selectedForBalance: balanced,
   },
+  continuity: {
+    published: published.size,
+    kept: keptCount,
+    renamed: Object.keys(redirects).length,
+    dropped: published.size - keptCount,
+  },
   novaCounts,
 };
 
@@ -103,6 +124,7 @@ await Promise.all([
   write('categories', site.categories),
   write('markers', site.markers),
   write('labels', site.labels),
+  write('redirects', redirects),
 ]);
 
 const withAlternatives = site.products.filter((p) => p.alternatives.codes.length).length;
@@ -113,7 +135,8 @@ console.error(
     `Selected ${site.products.length} of ${unique.length} unique candidates (${balanced} pulled in for balance)`,
     `NOVA groups: ${JSON.stringify(novaCounts)}`,
     `Category pages: ${site.categories.length}; products with a category page: ${withCategory}`,
-    `Marker pages: ${site.markers.length}`,
+    `Marker pages: ${site.markers.length} (${site.markers.filter((m) => m.group === null).length} additives that are not markers)`,
+    `Previously published products: ${published.size}; kept ${keptCount}, renamed ${Object.keys(redirects).length}, dropped ${published.size - keptCount}`,
     `NOVA 2-4 products with alternatives: ${withAlternatives} of ${needAlternatives}`,
     `Done in ${((Date.now() - started) / 1000).toFixed(1)}s`,
   ].join('\n'),

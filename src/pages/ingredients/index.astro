@@ -5,6 +5,7 @@ import { formatNumber, markerHref, markers, products } from '../../lib/data.ts';
 const list = markers.filter((m) => m.kind === 'ingredient');
 const ultra = list.filter((m) => m.group === 4);
 const processed = list.filter((m) => m.group === 3);
+const neither = list.filter((m) => m.group === null);
 const label = (m: (typeof list)[number]) => (m.eNumber ? `${m.eNumber} ${m.name}` : m.name);
 ---
 
@@ -37,6 +38,21 @@ const label = (m: (typeof list)[number]) => (m.eNumber ? `${m.eNumber} ${m.name}
         <h2>Markers of processing (group 3)</h2>
         <ul class="markers">
           {processed.map((m) => (
+            <li>
+              <a href={markerHref(m)}>{label(m)}</a> <span class="meta">{formatNumber(m.count)} products</span>
+            </li>
+          ))}
+        </ul>
+      </section>
+    )
+  }
+  {
+    neither.length > 0 && (
+      <section>
+        <h2>Common additives that are not NOVA markers</h2>
+        <p>These appear in many products but don't, on their own, raise a product's NOVA group.</p>
+        <ul class="markers">
+          {neither.map((m) => (
             <li>
               <a href={markerHref(m)}>{label(m)}</a> <span class="meta">{formatNumber(m.count)} products</span>
             </li>

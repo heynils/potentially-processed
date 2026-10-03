@@ -121,7 +121,8 @@ export interface SiteMarker {
   name: string;
   /** "ingredient" or "additive" (category markers do not get pages). */
   kind: 'ingredient' | 'additive';
-  group: NovaGroup;
+  /** NOVA group the marker implies; null for a common additive that is not a marker. */
+  group: NovaGroup | null;
   /** OFF additive classes, e.g. ["en:emulsifier"]; empty for ingredients. */
   classes: string[];
   eNumber: string | null;
@@ -155,6 +156,8 @@ export interface SiteMeta {
   generatedAt: string;
   funnel: Funnel;
   novaCounts: Record<NovaGroup, number>;
+  /** How the product set compares with what the live site published before this build. */
+  continuity: { published: number; kept: number; renamed: number; dropped: number };
 }
 
 /** English display names resolved from the OFF taxonomies. */

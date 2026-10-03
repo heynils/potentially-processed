@@ -31,6 +31,8 @@ properties, `.ts` extensions in imports.
   - `extract.ts` stage 1: stream export -> `data/work/candidates.jsonl` (top 60k by popularity)
   - `select.ts` stage 2: candidates + taxonomies -> `data/site/*.json`
   - `fetch-taxonomies.ts`, `make-fixture.ts` (regenerates `pipeline/fixtures/`)
+  - `fetch-published.ts` reads the live sitemap + `/redirects.json` so select keeps
+    published products first and redirects renamed slugs (URL stability for SEO)
   - `lib/types.ts` the data contract shared with the site
   - `lib/build.ts` pure selection/category/alternatives/marker logic (unit-tested)
   - `config.ts` all tunables (target size, thresholds, generic categories, aliases)
@@ -83,6 +85,10 @@ properties, `.ts` extensions in imports.
   Ranking uses the year, then `unique_scans_n` (see `compareRank`), and the
   select stage puts products sold in `PRIORITY_COUNTRIES` first (otherwise
   Moroccan products with English labels dominate the top of the list).
+- OFF's additive NOVA rules live in its code, not the taxonomy JSON. OFF
+  lists every applicable marker per product (group 3 ones too), so a common
+  additive never listed as a marker isn't one; those get "not a marker" pages
+  (`group: null` in `SiteMarker`). Variants of markers (E322i) are excluded.
 - Some ingredient lists are truncated to one entry ("water" for a mayo);
   `hasImplausibleIngredients()` drops those (71 in the Oct 2026 run).
 

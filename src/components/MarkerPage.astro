@@ -1,5 +1,5 @@
 ---
-import type { SiteMarker } from '../../pipeline/lib/types.ts';
+import type { NovaGroup, SiteMarker } from '../../pipeline/lib/types.ts';
 import Base from '../layouts/Base.astro';
 import AdSlot from './AdSlot.astro';
 import Breadcrumbs from './Breadcrumbs.astro';
@@ -15,7 +15,7 @@ import {
   percent,
   products,
 } from '../lib/data.ts';
-import { explainMarker, KINDS } from '../lib/explain.ts';
+import { describeMarker, explainMarker, KINDS } from '../lib/explain.ts';
 
 interface Props {
   marker: SiteMarker;
@@ -23,19 +23,33 @@ interface Props {
 
 const MAX_LISTED = 60;
 const { marker: m } = Astro.props;
-const label = m.eNumber ? `${m.eNumber} ${m.name}` : m.name;
-const lower = m.eNumber ? label : lowerFirst(m.name);
+// Name first: people search "is citric acid ultra-processed", rarely "E330".
+const label = m.eNumber ? `${m.name} (${m.eNumber})` : m.name;
+const lower = m.eNumber ? `${lowerFirst(m.name)} (${m.eNumber})` : lowerFirst(m.name);
 const listed = getProducts(m.codes.slice(0, MAX_LISTED));
 const classes = m.classes.map((c) => labels.additiveClasses[c]).filter(Boolean);
 const kindLabel = m.kind === 'additive' ? 'Additives' : 'Ingredients';
+const novaCounts: Record<NovaGroup, number> = { 1: 0, 2: 0, 3: 0, 4: 0 };
+for (const p of getProducts(m.codes)) novaCounts[p.nova]++;
+const ultraShare = percent(novaCounts[4], m.count);
+
 const verdict =
   m.group === 4
     ? `${label} is one of the markers Open Food Facts uses to classify a food as ultra-processed (NOVA group 4).`
-    : `${label} is not a marker of ultra-processing. It is one of the ingredients Open Food Facts uses to classify a food as processed (NOVA group 3).`;
+    : m.group === 3
+      ? `${label} is not a marker of ultra-processing. It is one of the markers Open Food Facts uses to classify a food as processed (NOVA group 3).`
+      : `No. ${label} is not one of the markers Open Food Facts uses to classify a food as processed or ultra-processed, so on its own it doesn't raise a product's NOVA group.`;
 
-const explained = explainMarker({ tag: m.tag, type: m.kind === 'additive' ? 'additives' : 'ingredients', group: m.group });
-const title = m.group === 4 ? `Is ${lower} ultra-processed?` : `Is ${lower} ultra-processed? No, but processed`;
-const description = `${verdict} It appears in ${m.count} of the ${formatNumber(products.length)} products on this site. What it is, why NOVA counts it, and where it turns up.`;
+const explained =
+  m.group === null ? null : explainMarker({ tag: m.tag, type: m.kind === 'additive' ? 'additives' : 'ingredients', group: m.group });
+// Non-markers have no NOVA group; describeMarker only uses the group for categories.
+const description = explained?.description ?? describeMarker({ tag: m.tag, type: 'additives', group: 3 });
+const title =
+  m.group === 4 ? `Is ${lower} ultra-processed?` : m.group === 3 ? `Is ${lower} ultra-processed? No, but processed` : `Is ${lower} ultra-processed?`;
+const metaDescription =
+  m.group === null
+    ? `${verdict} What it is, what it does, and how processed the ${m.count} products here that contain it are.`
+    : `${verdict} It appears in ${m.count} of the ${formatNumber(products.length)} products on this site. What it is, why NOVA counts it, and where it turns up.`;
 
 const breadcrumbItems = [
   { name: 'Home', href: href() },
@@ -56,7 +70,7 @@ const jsonLd = [
 ];
 ---
 
-<Base title={title} description={description} jsonLd={jsonLd}>
+<Base title={title} description={metaDescription} jsonLd={jsonLd}>
   <Breadcrumbs items={breadcrumbItems} />
   <div data-pagefind-body data-pagefind-meta={`kind:${m.kind === 'additive' ? 'Additive' : 'Ingredient'}`}>
     <h1 data-pagefind-meta="title">{label}</h1>
@@ -64,10 +78,21 @@ const jsonLd = [
   </div>
 
   <section aria-labelledby="what">
-    <h2 id="what">What it is and why it counts</h2>
-    <p>{explained.description}</p>
-    <h3>{KINDS[explained.kind].title}</h3>
-    <p>{KINDS[explained.kind].explanation}</p>
+    <h2 id="what">{explained ? 'What it is and why it counts' : 'What it is'}</h2>
+    <p>{description}</p>
+    {
+      explained ? (
+        <>
+          <h3>{KINDS[explained.kind].title}</h3>
+          <p>{KINDS[explained.kind].explanation}</p>
+        </>
+      ) : (
+        <p>
+          A product that contains it can still be ultra-processed for other reasons: {novaCounts[4]} of the {m.count}{' '}
+          products here that contain {lower} ({ultraShare}%) are in group 4 because of other ingredients or additives.
+        </p>
+      )
+    }
     {
       classes.length > 0 && (
         <>
