@@ -5,7 +5,8 @@
 // (openfoodfacts-products.jsonl.gz), including its quirks:
 //   - nova_group is an int, but older records can carry it as a string;
 //   - completeness can exceed 1 (seen: 1.0875);
-//   - categories_hierarchy can be ["en:null"];
+//   - categories_hierarchy can be ["en:null"], or empty while categories_tags
+//     has the categories;
 //   - images use two schemas: legacy `images.front_en` and the newer
 //     `images.selected.front.en`; there is no precomputed image URL.
 
@@ -13,7 +14,7 @@ import type { Candidate, Ingredient, Marker, MarkerType, NovaGroup, ProductImage
 
 export type RejectReason =
   | 'no-nova-group'
-  | 'not-english'
+  | 'other-language'
   | 'obsolete'
   | 'bad-code'
   | 'no-name'
@@ -139,39 +140,55 @@ export function frontImage(code: string, images: unknown, lang: string): Product
   };
 }
 
-/** OFF names are often shouted ("CHAMOMILE HERBAL TEA"); tame all-caps names only. */
+/** OFF names are often shouted ("CHAMOMILE HERBAL TEA", "ÄPPELMOS"); tame all-caps names only. */
 export function tidyName(name: string): string {
   const cleaned = name.replace(/\s+/g, ' ').trim();
-  const letters = cleaned.replace(/[^A-Za-z]/g, '');
+  const letters = cleaned.replace(/\P{L}/gu, '');
   if (letters.length >= 4 && letters === letters.toUpperCase()) {
-    return cleaned.toLowerCase().replace(/(^|[\s\-/(])([a-z])/g, (_, p: string, c: string) => p + c.toUpperCase());
+    return cleaned.toLowerCase().replace(/(^|[\s\-/(])(\p{Ll})/gu, (_, p: string, c: string) => p + c.toUpperCase());
   }
   return cleaned;
 }
 
-export function normalize(raw: Raw): NormalizeResult {
+/**
+ * The language OFF parsed the ingredient list in, which is the language the
+ * page shows it in: `ingredients_lc` (older records only have `lang`, the
+ * pack's main language; the two differ when, say, a Swedish-labelled product
+ * only has its ingredients typed in French).
+ */
+export const ingredientsLanguage = (raw: Raw): string => str(raw.ingredients_lc) || str(raw.lang);
+
+/** `languages`: the languages a page can show a product in (config LANGUAGES). */
+export function normalize(raw: Raw, languages: ReadonlySet<string>): NormalizeResult {
   const nova = parseNova(raw.nova_group);
   if (!nova) return { ok: false, reason: 'no-nova-group' };
 
-  // v1 is English-only: we need the pack's own language to be English so the
-  // name, ingredient list and ingredient tree are all in English.
-  const lang = str(raw.lang);
-  if (lang !== 'en') return { ok: false, reason: 'not-english' };
+  // The name, the ingredient list as printed and OFF's parsed ingredient tree
+  // must all be in one language the site supports.
+  const lang = ingredientsLanguage(raw);
+  if (!languages.has(lang)) return { ok: false, reason: 'other-language' };
+  // `product_name` and `ingredients_text` are in the pack's main language.
+  const inLang = (field: string) => str(raw[`${field}_${lang}`]) || (str(raw.lang) === lang ? str(raw[field]) : '');
 
   if (raw.obsolete === true || raw.obsolete === 'on' || raw.obsolete === 1) return { ok: false, reason: 'obsolete' };
 
   const code = str(raw.code);
   if (!/^\d{8,14}$/.test(code)) return { ok: false, reason: 'bad-code' };
 
-  const name = tidyName(str(raw.product_name_en) || str(raw.product_name));
+  const name = tidyName(inLang('product_name'));
   if (name.length < 3) return { ok: false, reason: 'no-name' };
 
-  const ingredientsText = stripAllergenMarks(str(raw.ingredients_text_en) || str(raw.ingredients_text));
+  const ingredientsText = stripAllergenMarks(inLang('ingredients_text'));
   const ingredients = parseIngredients(raw.ingredients);
   if (!ingredientsText || ingredients.length === 0) return { ok: false, reason: 'no-ingredients' };
 
-  const categories = strArray(raw.categories_hierarchy).filter((t) => isEnglishTag(t) && t !== 'en:null');
-  if (categories.length === 0) return { ok: false, reason: 'no-category' };
+  // Many records (a quarter of Swedish ones) have an empty
+  // categories_hierarchy but canonical categories_tags; use those then. May
+  // still be empty: whether a product without a category is wanted is the
+  // extract stage's call (see poolReject in markets.ts).
+  const englishTags = (field: unknown) => strArray(field).filter((t) => isEnglishTag(t) && t !== 'en:null');
+  const hierarchy = englishTags(raw.categories_hierarchy);
+  const categories = hierarchy.length ? hierarchy : englishTags(raw.categories_tags);
 
   const comparedTo = str(raw.compared_to_category);
   const nutri = str(raw.nutriscore_grade);
@@ -181,6 +198,7 @@ export function normalize(raw: Raw): NormalizeResult {
     ok: true,
     candidate: {
       code,
+      lang,
       name,
       brand,
       quantity: str(raw.quantity) || null,

@@ -16,6 +16,7 @@ import {
   BALANCE_SHARE,
   EXTRA_INGREDIENT_PARENTS,
   GENERIC_CATEGORIES,
+  MARKET_QUOTAS,
   MAX_ALTERNATIVES,
   MAX_RELATED,
   MIN_CATEGORY_PAGE,
@@ -30,13 +31,13 @@ import {
   dedupe,
   hasImplausibleIngredients,
   ingredientAncestors,
-  marketFirst,
   parsePublished,
   publishedFirst,
   selectProducts,
   slugRedirects,
   type BuildOptions,
 } from './lib/build.ts';
+import { inMarket, marketFirst } from './lib/markets.ts';
 import { loadTaxonomies } from './lib/taxonomy.ts';
 import type { Candidate, NovaGroup, SiteMeta } from './lib/types.ts';
 
@@ -58,6 +59,8 @@ const { values: args } = parseArgs({
 const opts: BuildOptions = {
   compare: marketFirst(PRIORITY_COUNTRIES),
   target: Number(args.target),
+  quotas: MARKET_QUOTAS,
+  marketCountries: PRIORITY_COUNTRIES,
   balanceShare: BALANCE_SHARE,
   minCategoryPage: Number(args['min-category-page']),
   minMarkerPage: Number(args['min-marker-page']),
@@ -106,6 +109,11 @@ const meta: SiteMeta = {
     afterDedupe: unique.length,
     selected: site.products.length,
     selectedForBalance: balanced,
+    markets: MARKET_QUOTAS.map((m) => ({
+      ...m,
+      eligible: stats.eligibleByMarket?.[m.name] ?? 0,
+      selected: selected.filter((c) => inMarket(m, c)).length,
+    })),
   },
   continuity: {
     published: published.size,
@@ -114,6 +122,9 @@ const meta: SiteMeta = {
     dropped: published.size - keptCount,
   },
   novaCounts,
+  countries: [...PRIORITY_COUNTRIES]
+    .map((tag) => ({ tag, products: site.products.filter((p) => p.countries.includes(tag)).length }))
+    .sort((a, b) => b.products - a.products),
 };
 
 await mkdir(args.out, { recursive: true });
@@ -133,6 +144,7 @@ const withCategory = site.products.filter((p) => p.category).length;
 console.error(
   [
     `Selected ${site.products.length} of ${unique.length} unique candidates (${balanced} pulled in for balance)`,
+    ...meta.funnel.markets.map((m) => `${m.name}: ${m.selected} selected of ${m.eligible} eligible`),
     `NOVA groups: ${JSON.stringify(novaCounts)}`,
     `Category pages: ${site.categories.length}; products with a category page: ${withCategory}`,
     `Marker pages: ${site.markers.length} (${site.markers.filter((m) => m.group === null).length} additives that are not markers)`,

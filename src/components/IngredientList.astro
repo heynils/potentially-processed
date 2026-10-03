@@ -16,8 +16,8 @@ interface Props {
 const escapeHtml = (s: string) =>
   s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 
-/** Packs often shout ("MODIFIED STARCH"); show all-caps text in lower case. */
-const tidy = (s: string) => (s.length > 3 && s === s.toUpperCase() && /[A-Z]/.test(s) ? s.toLowerCase() : s);
+/** Packs often shout ("MODIFIED STARCH", "VETEMJÖL"); show all-caps text in lower case. */
+const tidy = (s: string) => (s.length > 3 && s === s.toUpperCase() && /\p{Lu}/u.test(s) ? s.toLowerCase() : s);
 
 function render(items: SiteIngredient[]): string {
   return items

@@ -48,8 +48,8 @@ const title =
   m.group === 4 ? `Is ${lower} ultra-processed?` : m.group === 3 ? `Is ${lower} ultra-processed? No, but processed` : `Is ${lower} ultra-processed?`;
 const metaDescription =
   m.group === null
-    ? `${verdict} What it is, what it does, and how processed the ${m.count} products here that contain it are.`
-    : `${verdict} It appears in ${m.count} of the ${formatNumber(products.length)} products on this site. What it is, why NOVA counts it, and where it turns up.`;
+    ? `${verdict} What it is, what it does, and how processed the ${formatNumber(m.count)} products here that contain it are.`
+    : `${verdict} It appears in ${formatNumber(m.count)} of the ${formatNumber(products.length)} products on this site. What it is, why NOVA counts it, and where it turns up.`;
 
 const breadcrumbItems = [
   { name: 'Home', href: href() },
@@ -89,7 +89,7 @@ const jsonLd = [
         </>
       ) : (
         <p>
-          A product that contains it can still be ultra-processed for other reasons: {novaCounts[4]} of the {m.count}{' '}
+          A product that contains it can still be ultra-processed for other reasons: {formatNumber(novaCounts[4])} of the {formatNumber(m.count)}{' '}
           products here that contain {lower} ({ultraShare}%) are in group 4 because of other ingredients or additives.
         </p>
       )
@@ -124,7 +124,7 @@ const jsonLd = [
   <section aria-labelledby="where">
     <h2 id="where">Where it turns up</h2>
     <p>
-      {label} appears in {m.count} of the {formatNumber(products.length)} products on this site ({percent(m.count, products.length)}%).
+      {label} appears in {formatNumber(m.count)} of the {formatNumber(products.length)} products on this site ({percent(m.count, products.length)}%).
     </p>
     {
       m.topCategories.length > 0 && (
@@ -136,7 +136,7 @@ const jsonLd = [
                 <a href={categoryHref(c)}>{c.name}</a>
                 <span class="meta">
                   {' '}
-                  {n} of {c.count} products
+                  {formatNumber(n)} of {formatNumber(c.count)} products
                 </span>
               </li>
             );
@@ -146,7 +146,7 @@ const jsonLd = [
     }
     <h3>Products containing {lower}</h3>
     <ProductList products={listed} />
-    {m.count > MAX_LISTED && <p class="meta">Showing the {MAX_LISTED} most popular of {m.count}.</p>}
+    {m.count > MAX_LISTED && <p class="meta">Showing the {MAX_LISTED} most popular of {formatNumber(m.count)}.</p>}
   </section>
 
   <p class="meta">

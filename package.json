@@ -18,7 +18,7 @@
     "data:extract": "node pipeline/extract.ts",
     "data:select": "node pipeline/select.ts",
     "data": "npm run data:taxonomies && npm run data:extract -- --input https://static.openfoodfacts.org/data/openfoodfacts-products.jsonl.gz --min-lines 1000000 && npm run data:select",
-    "data:sample": "node pipeline/extract.ts --input pipeline/fixtures/sample.jsonl.gz --out data/work-sample && node pipeline/select.ts --work data/work-sample --taxonomies pipeline/fixtures/taxonomies --source fixture --target 300"
+    "data:sample": "node pipeline/extract.ts --input pipeline/fixtures/sample.jsonl.gz --out data/work-sample && node pipeline/select.ts --work data/work-sample --taxonomies pipeline/fixtures/taxonomies --source fixture --target 600"
   },
   "dependencies": {
     "@astrojs/sitemap": "^3.7.4",

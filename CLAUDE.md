@@ -13,8 +13,8 @@ that define terms inline over terse summaries.
 
 ```sh
 npm ci
-npm run data:sample   # offline: build data/site/ from the committed sample (~300 products)
-npm run data          # full: stream the 13 GB OFF export (~10 min), then select
+npm run data:sample   # offline: build data/site/ from the committed sample (~600 products, some Swedish)
+npm run data          # full: stream the 13 GB OFF export (~11 min), then select
 npm run dev           # Astro dev server (search needs a build: no Pagefind index in dev)
 npm run build         # astro build + pagefind index -> dist/
 npm test              # pipeline unit tests (node:test, no deps)
@@ -28,26 +28,45 @@ properties, `.ts` extensions in imports.
 ## Layout
 
 - `pipeline/` data pipeline, TypeScript run directly by Node
-  - `extract.ts` stage 1: stream export -> `data/work/candidates.jsonl` (top 60k by popularity)
+  - `extract.ts` stage 1: stream export -> `data/work/candidates.jsonl` (150k: every
+    product of a quota market, then the most popular from the served countries)
   - `select.ts` stage 2: candidates + taxonomies -> `data/site/*.json`
   - `fetch-taxonomies.ts`, `make-fixture.ts` (regenerates `pipeline/fixtures/`)
   - `fetch-published.ts` reads the live sitemap + `/redirects.json` so select keeps
     published products first and redirects renamed slugs (URL stability for SEO)
   - `lib/types.ts` the data contract shared with the site
   - `lib/build.ts` pure selection/category/alternatives/marker logic (unit-tested)
+  - `lib/markets.ts` market ranking, quotas (Sweden) and which products enter the pool;
+    shared by extract and select
   - `config.ts` all tunables (target size, thresholds, generic categories, aliases)
 - `src/` Astro site; reads `data/site/` at build time via `src/lib/data.ts`
   - `src/lib/explain.ts` curated marker descriptions and "kinds" (editorial content)
   - `src/lib/nova.ts` NOVA group definitions (Monteiro et al. 2019), short labels, icons
   - `src/components/` `NovaScale` (the 1-4 scale, farm to factory), `ProductThumb` /
-    `ProductList` / `ProductTiles` (products with photos), `Icon` (Lucide SVGs inlined
-    at build time from `lucide-static`; add icons by importing them there)
+    `ProductList` / `ProductTiles` (products with photos), `Icon` (`<use>` of the
+    Lucide sprite `/icons.svg`, built from `lucide-static` in `src/lib/icons.ts`;
+    add icons by importing them there)
+  - `src/integrations/compact-html.ts` post-build pass: strips indentation and
+    renames Astro's scoped classes to short ones (~30% smaller pages)
 - `.github/workflows/deploy.yml` weekly data refresh + build + deploy to Pages
 - `data/` is gitignored: never commit the OFF dump or generated data
 
 ## Decisions (made with Nils; don't relitigate without asking)
 
-- English only for v1. ~5,000 products with complete data, not the whole DB.
+- Site text is English. Products: ingredient lists in English or Swedish
+  (`LANGUAGES`; Nils, Oct 2026: "add Swedish products too, as many as is
+  possible for the setup"). Swedish names and ingredients are shown as
+  printed, marked `lang="sv"`; `<html lang>` stays "en" (Pagefind splits its
+  index by that attribute, and search must cover both).
+- Product count fills GitHub Pages' 1 GB cap: ~40,000 products at ~20 KB per
+  product page. Every byte on a product page costs products, so keep pages
+  lean and check the `dist` size after template changes (the workflow fails
+  the build over 1 GB; lower `TARGET_PRODUCTS` if it does).
+- Markets: products sold in `PRIORITY_COUNTRIES` (English-speaking + Sweden)
+  rank first. Sweden is a quota market (`MARKET_QUOTAS`): all its eligible
+  products get in whatever their scans, even without a category. Alternatives
+  prefer products sold in the same country; search has a "Sold in" filter
+  (Pagefind filter `country` on product pages).
 - Astro (static output), Pagefind for search, `@astrojs/sitemap`.
 - Data: OFF bulk JSONL export, never the live API (no full-text search, rate
   limits). Hosting: GitHub Pages via custom Actions workflow. Cloudflare Pages
@@ -85,9 +104,16 @@ properties, `.ts` extensions in imports.
 
 ## Data facts learned from the real export (Oct 2026)
 
-- 4.79M products; ~367k pass the filters (English label, NOVA group, parsed
-  ingredients, category, name). Extract takes ~10 min on 4 vCPUs, CPU-bound
-  on JSON.parse; the byte pre-filter skips ~80% of lines.
+- 4.79M products; ~368k pass the filters (NOVA group, name and parsed
+  ingredients in English or Swedish, category). Extract takes ~11 min on 4
+  vCPUs (8 on the Actions runner), CPU-bound on JSON.parse; the byte
+  pre-filter skips ~80% of lines.
+- The parsed ingredient tree is in `ingredients_lc`, which can differ from
+  the pack's `lang` (a Swedish label with a French ingredient list); the page
+  language follows `ingredients_lc`, and the name must be in it too.
+- Sweden: ~31k products are sold there or labelled in Swedish, but ~70% have
+  no ingredient list, so no NOVA group. ~3.9k pass every filter; ~2.2k more
+  have a NOVA group but no category (kept, as a quota market).
 - No precomputed image URL in the JSONL: build it from `images.front_<lang>`
   (legacy) or `images.selected.front.<lang>` (newer), see `normalize.ts`.
 - `completeness` can exceed 1; `nova_group` may be a string; categories

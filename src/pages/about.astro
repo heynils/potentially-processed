@@ -1,10 +1,35 @@
 ---
 import Base from '../layouts/Base.astro';
-import { categories, formatNumber, href, markers, meta, products } from '../lib/data.ts';
+import {
+  categories,
+  formatNumber,
+  href,
+  languageName,
+  listJoin,
+  markers,
+  meta,
+  products,
+  servedCountries,
+  withArticle,
+} from '../lib/data.ts';
 import { SITE } from '../lib/site.ts';
 
 const f = meta.funnel;
 const rejected = (key: string) => formatNumber(f.rejected[key] ?? 0);
+const countryList = servedCountries.filter((c) => c.products > 0);
+const quotaNames = listJoin(meta.funnel.markets.map((m) => m.name));
+// Built as strings: punctuation must sit flush against the numbers.
+const marketNotes = meta.funnel.markets.map((m) => {
+  const labelled = products.filter((p) => m.languages.includes(p.lang)).length;
+  return (
+    `Products sold in ${m.name} are scanned far less often than British or American ones, so on scan counts alone few ` +
+    `would make it. The site sets aside up to ${formatNumber(m.max)} places for them: ${formatNumber(m.selected)} of the ` +
+    `${formatNumber(m.eligible)} eligible products are here` +
+    (labelled
+      ? `, ${formatNumber(labelled)} of them labelled in ${m.languages.map(languageName).join(' or ')}, with their names and ingredient lists shown as printed.`
+      : '.')
+  );
+});
 const exportDate = meta.exportDate
   ? new Date(meta.exportDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
   : null;
@@ -45,13 +70,13 @@ const exportDate = meta.exportDate
         <tbody>
           <tr><th scope="row">Products in the export</th><td class="num">{formatNumber(f.linesRead)}</td></tr>
           <tr><th scope="row">No NOVA group computed</th><td class="num">−{rejected('no-nova-group')}</td></tr>
-          <tr><th scope="row">Label not in English</th><td class="num">−{rejected('not-english')}</td></tr>
+          <tr><th scope="row">Ingredients not listed in English or Swedish</th><td class="num">−{rejected('other-language')}</td></tr>
           <tr><th scope="row">No category</th><td class="num">−{rejected('no-category')}</td></tr>
           <tr><th scope="row">No usable product name</th><td class="num">−{rejected('no-name')}</td></tr>
           <tr><th scope="row">No parsed ingredient list</th><td class="num">−{rejected('no-ingredients')}</td></tr>
           <tr><th scope="row">Other problems (withdrawn products, invalid barcodes, unreadable records)</th><td class="num">−{formatNumber((f.rejected['obsolete'] ?? 0) + (f.rejected['bad-code'] ?? 0) + f.parseErrors)}</td></tr>
           <tr class="total"><th scope="row">Eligible products</th><td class="num">{formatNumber(f.eligible)}</td></tr>
-          <tr><th scope="row">Most-scanned eligible products considered</th><td class="num">{formatNumber(f.pooled)}</td></tr>
+          <tr><th scope="row">Considered: {quotaNames ? `every product sold in ${quotaNames}, then the most scanned of the rest` : 'the most scanned'}</th><td class="num">{formatNumber(f.pooled)}</td></tr>
           <tr><th scope="row">Ingredient list evidently truncated (only "water", or a single additive)</th><td class="num">−{formatNumber(f.implausible)}</td></tr>
           <tr><th scope="row">After merging duplicates (same brand and name)</th><td class="num">{formatNumber(f.afterDedupe)}</td></tr>
           <tr class="total"><th scope="row">Products on this site</th><td class="num">{formatNumber(f.selected)}</td></tr>
@@ -64,6 +89,15 @@ const exportDate = meta.exportDate
       added specifically because they are less processed than a popular product in the same category. Without them,
       many popular products would have no alternative to point to.
     </p>
+    {marketNotes.map((note) => <p>{note}</p>)}
+    {
+      countryList.length > 0 && (
+        <p>
+          Products sold in {listJoin(countryList.map((c) => `${withArticle(c.name)} (${formatNumber(c.products)})`))} rank
+          first, and a product page suggests alternatives sold in the same country where it can.
+        </p>
+      )
+    }
     <p>
       The site also has {formatNumber(categories.length)} category pages, for categories with enough products to
       compare, and {formatNumber(markers.length)} pages on individual ingredients and additives.

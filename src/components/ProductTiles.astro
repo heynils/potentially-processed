@@ -3,7 +3,7 @@
 // matters more than reading a list: alternatives and popular products. Flat
 // tiles with no shadows; the whole tile is the link.
 import type { SiteProduct } from '../../pipeline/lib/types.ts';
-import { productHref } from '../lib/data.ts';
+import { productHref, textLang } from '../lib/data.ts';
 import NovaBadge from './NovaBadge.astro';
 import ProductThumb from './ProductThumb.astro';
 
@@ -22,7 +22,7 @@ const plural = (n: number, word: string) => `${n === 0 ? 'no' : n} ${word}${n ==
     products.map((p) => (
       <li>
         <a class="tile" href={productHref(p)}>
-          <span class="name">{p.name}</span>
+          <span class="name" lang={textLang(p)}>{p.name}</span>
           {p.brand && <span class="sub">{p.brand}</span>}
           {stats && (
             <span class="stats">

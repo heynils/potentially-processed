@@ -2,6 +2,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { defineConfig } from 'astro/config';
 import sitemap from '@astrojs/sitemap';
+import compactHtml from './src/integrations/compact-html.ts';
 
 // SITE_URL and BASE_PATH are set by the deploy workflow from
 // actions/configure-pages, so the same build works on
@@ -52,7 +53,7 @@ export default defineConfig({
     sitemap({
       filter: (page) => {
         const path = new URL(page).pathname.slice(base.length - 1);
-        return !/^\/(search|404)\/?$/.test(path) && !/\.(txt|json)$/.test(path) && !(path in redirects);
+        return !/^\/(search|404)\/?$/.test(path) && !/\.(txt|json|svg)$/.test(path) && !(path in redirects);
       },
       serialize: (item) => {
         const slug = new URL(item.url).pathname.match(/\/products\/([^/]+)\/$/)?.[1];
@@ -60,5 +61,6 @@ export default defineConfig({
         return date ? { ...item, lastmod: date } : item;
       },
     }),
+    compactHtml(),
   ],
 });

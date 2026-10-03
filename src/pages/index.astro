@@ -19,15 +19,28 @@ import {
   percent,
   productHref,
   products,
+  textLang,
 } from '../lib/data.ts';
 import { SITE } from '../lib/site.ts';
 
 // Products are sorted by popularity, so the head of the list is what people scan most.
 const popular = products.filter((p) => p.image).slice(0, 8);
+// Markets with their own share of the site (Sweden) get their own row: their
+// products are scanned less, so they rarely reach the overall top 8. Products
+// labelled in the market's language come first, as the most local.
+const shown = new Set(popular.map((p) => p.code));
+const marketRows = meta.funnel.markets
+  .map((m) => {
+    const inMarket = products.filter((p) => p.image && !shown.has(p.code) && (m.languages.includes(p.lang) || p.countries.some((t) => m.countries.includes(t))));
+    const local = inMarket.filter((p) => m.languages.includes(p.lang));
+    return { name: m.name, products: [...local, ...inMarket.filter((p) => !local.includes(p))].slice(0, 8) };
+  })
+  .filter((row) => row.products.length >= 4);
 
-// Mid-sized categories make better entry points than huge generic ones.
+// Mid-sized categories make better entry points than huge generic ones
+// (between 0.4% and 8% of all products: 160 to 3,200 of 40,000).
 const featured = [...categories]
-  .filter((c) => c.count >= 20 && c.count <= 400)
+  .filter((c) => c.count >= products.length * 0.004 && c.count <= products.length * 0.08)
   .sort((a, b) => b.count - a.count)
   .slice(0, 10)
   .sort((a, b) => percent(a.novaCounts[4], a.count) - percent(b.novaCounts[4], b.count))
@@ -48,7 +61,7 @@ const examples = [
   products.find((p) => p.nova === 1 && p.image),
 ]
   .filter((p) => p !== undefined)
-  .map((p) => ({ text: p.name, url: productHref(p) }));
+  .map((p): { text: string; url: string; lang?: string } => ({ text: p.name, url: productHref(p), lang: textLang(p) }));
 const exampleMarker = markers.find((m) => m.tag === 'en:maltodextrin') ?? topMarkers[0];
 if (exampleMarker) examples.push({ text: lowerFirst(exampleMarker.name), url: markerHref(exampleMarker) });
 const exampleCategory = categories.find((c) => c.tag === 'en:breakfast-cereals') ?? featured[0]?.category;
@@ -78,7 +91,7 @@ const jsonLd = [
         <p class="try">
           <span class="meta">Try</span>
           {examples.map((e) => (
-            <a href={e.url}>{e.text}</a>
+            <a href={e.url} lang={e.lang}>{e.text}</a>
           ))}
         </p>
       )
@@ -104,6 +117,15 @@ const jsonLd = [
     <ProductTiles products={popular} />
   </section>
 
+  {
+    marketRows.map((row, i) => (
+      <section aria-labelledby={`market-${i}`}>
+        <h2 id={`market-${i}`}>Popular in {row.name}</h2>
+        <ProductTiles products={row.products} />
+      </section>
+    ))
+  }
+
   <section aria-labelledby="cats">
     <h2 id="cats">Browse by category</h2>
     <ul class="cat-list">
@@ -114,7 +136,7 @@ const jsonLd = [
               <span class="cat-text">
                 <span class="cat-name">{c.name}</span>
                 <span class="meta">
-                  {percent(c.novaCounts[4], c.count)}% of {c.count} ultra-processed
+                  {percent(c.novaCounts[4], c.count)}% of {formatNumber(c.count)} ultra-processed
                 </span>
                 <NovaBar counts={c.novaCounts} mini />
               </span>

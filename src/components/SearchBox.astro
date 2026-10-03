@@ -1,5 +1,5 @@
 ---
-import { href } from '../lib/data.ts';
+import { href, servedCountries } from '../lib/data.ts';
 
 interface Props {
   /** "compact": header form that submits to /search/. "full": live results below the box. */
@@ -36,6 +36,17 @@ const id = variant === 'compact' ? 'q-header' : 'q';
           />
           <button type="submit">Search</button>
         </div>
+        {servedCountries.length > 1 && (
+          <p class="where">
+            <label for={`${id}-country`}>Sold in</label>
+            <select id={`${id}-country`} name="country" data-country aria-controls="search-results">
+              <option value="">any country</option>
+              {servedCountries.map((c) => (
+                <option value={c.name}>{c.name}</option>
+              ))}
+            </select>
+          </p>
+        )}
       </form>
       <p class="status meta" aria-live="polite" data-status />
       <ol id="search-results" class="results" data-results />
@@ -52,10 +63,29 @@ const id = variant === 'compact' ? 'q-header' : 'q';
     excerpt: string;
     meta: { title?: string; nova?: string; brand?: string; kind?: string; image?: string };
   };
+  type SearchOptions = { filters?: Record<string, string> };
   type Pagefind = {
     options: (o: { baseUrl?: string; excerptLength?: number }) => Promise<void>;
-    search: (q: string) => Promise<{ results: { data: () => Promise<PagefindResult> }[] } | null>;
-    debouncedSearch: (q: string, opts?: object, ms?: number) => Promise<{ results: { data: () => Promise<PagefindResult> }[] } | null>;
+    debouncedSearch: (q: string, opts?: SearchOptions, ms?: number) => Promise<{ results: { data: () => Promise<PagefindResult> }[] } | null>;
+  };
+
+  // The "Sold in" choice is remembered on this device (a convenience: the
+  // page works the same when storage is blocked).
+  const COUNTRY_KEY = 'search-country';
+  const loadCountry = () => {
+    try {
+      return localStorage.getItem(COUNTRY_KEY) ?? '';
+    } catch {
+      return '';
+    }
+  };
+  const saveCountry = (value: string) => {
+    try {
+      if (value) localStorage.setItem(COUNTRY_KEY, value);
+      else localStorage.removeItem(COUNTRY_KEY);
+    } catch {
+      // storage unavailable: the choice lasts for this page only
+    }
   };
 
   const base = import.meta.env.BASE_URL;
@@ -91,6 +121,7 @@ const id = variant === 'compact' ? 'q-header' : 'q';
 
   for (const root of document.querySelectorAll<HTMLElement>('[data-search]')) {
     const input = root.querySelector('input')!;
+    const country = root.querySelector<HTMLSelectElement>('[data-country]');
     const status = root.querySelector<HTMLElement>('[data-status]')!;
     const list = root.querySelector<HTMLElement>('[data-results]')!;
 
@@ -108,15 +139,30 @@ const id = variant === 'compact' ? 'q-header' : 'q';
         status.textContent = 'Search is not available in this build. Run `npm run build` to generate the index.';
         return;
       }
-      const search = await pf.debouncedSearch(q, {}, 200);
+      // Product pages carry a "country" filter per country the site serves
+      // (see products/[slug].astro); other pages have none, so a country
+      // choice narrows the results to products.
+      const where = country?.value ?? '';
+      const search = await pf.debouncedSearch(q, where ? { filters: { country: where } } : {}, 200);
       if (search === null) return; // superseded by a newer keystroke
       const items = await Promise.all(search.results.slice(0, 20).map((r) => r.data()));
       render(list, items);
       const n = search.results.length;
-      status.textContent = n === 0 ? `No results for “${q}”.` : `${n} result${n === 1 ? '' : 's'}${n > 20 ? ', showing the first 20' : ''}.`;
+      const what = where ? `product${n === 1 ? '' : 's'} sold in ${where}` : `result${n === 1 ? '' : 's'}`;
+      status.textContent =
+        n === 0 ? `No ${where ? `products sold in ${where}` : 'results'} for “${q}”.` : `${n} ${what}${n > 20 ? ', showing the first 20' : ''}.`;
     }
 
     input.addEventListener('input', () => run(input.value));
+    if (country) {
+      const params = new URLSearchParams(location.search);
+      const wanted = params.get('country') ?? loadCountry();
+      if ([...country.options].some((o) => o.value === wanted)) country.value = wanted;
+      country.addEventListener('change', () => {
+        saveCountry(country.value);
+        run(input.value);
+      });
+    }
     root.querySelector('form')!.addEventListener('submit', (e) => {
       e.preventDefault();
       const url = new URL(location.href);
@@ -202,6 +248,30 @@ const id = variant === 'compact' ? 'q-header' : 'q';
   .search-full button {
     font-size: 1.05rem;
     padding: 0.6rem 1.2rem;
+  }
+
+  .where {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin: 0.6rem 0 0;
+    font-size: 0.95rem;
+  }
+
+  .where label {
+    display: inline;
+    margin: 0;
+    font-weight: 500;
+    color: var(--muted);
+  }
+
+  select {
+    font: inherit;
+    color: var(--text);
+    background: var(--bg);
+    border: 1px solid var(--muted);
+    border-radius: 2px;
+    padding: 0.3rem 0.5rem;
   }
 
   .status {

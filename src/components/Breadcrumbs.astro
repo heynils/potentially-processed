@@ -1,6 +1,7 @@
 ---
 interface Props {
-  items: { name: string; href?: string }[];
+  /** `lang` for a name that isn't English (a Swedish product's name). */
+  items: { name: string; href?: string; lang?: string }[];
 }
 const { items } = Astro.props;
 ---
@@ -10,7 +11,11 @@ const { items } = Astro.props;
     {
       items.map((item, i) => (
         <li>
-          {item.href && i < items.length - 1 ? <a href={item.href}>{item.name}</a> : <span aria-current="page">{item.name}</span>}
+          {item.href && i < items.length - 1 ? (
+            <a href={item.href}>{item.name}</a>
+          ) : (
+            <span aria-current="page" lang={item.lang}>{item.name}</span>
+          )}
         </li>
       ))
     }

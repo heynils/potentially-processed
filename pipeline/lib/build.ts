@@ -3,7 +3,8 @@
 
 import { slugify, productSlug } from './slug.ts';
 import { humanizeTag, type Taxonomies, type Taxonomy } from './taxonomy.ts';
-import { compareRank, tidyName } from './normalize.ts';
+import { inMarket, type MarketQuota } from './markets.ts';
+import { tidyName } from './normalize.ts';
 import type {
   Candidate,
   Ingredient,
@@ -20,6 +21,10 @@ export interface BuildOptions {
   /** Best-first ordering of products; see marketFirst(). */
   compare: (a: Candidate, b: Candidate) => number;
   target: number;
+  /** Markets that get places whatever their popularity (config MARKET_QUOTAS). */
+  quotas: MarketQuota[];
+  /** Countries the site serves; alternatives sold in the same one come first. */
+  marketCountries: Set<string>;
   balanceShare: number;
   minCategoryPage: number;
   minMarkerPage: number;
@@ -33,12 +38,6 @@ const emptyNovaCounts = (): Record<NovaGroup, number> => ({ 1: 0, 2: 0, 3: 0, 4:
 
 // ---------------------------------------------------------------------------
 // Ranking
-
-/** compareRank, but products sold in a priority country come first. */
-export function marketFirst(priority: Set<string>): (a: Candidate, b: Candidate) => number {
-  const inMarket = (c: Candidate) => (c.countries.some((t) => priority.has(t)) ? 1 : 0);
-  return (a, b) => inMarket(b) - inMarket(a) || compareRank(a, b);
-}
 
 /**
  * Ordering that puts products already published on the live site first.
@@ -115,7 +114,12 @@ export function hasImplausibleIngredients(c: Candidate, ingredientAncestorsOf: (
  * engines treat as thin content, so we keep the most popular barcode only.
  */
 export function dedupeKey(c: Candidate): string {
-  const norm = (s: string | null) => (s ?? '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+  const norm = (s: string | null) =>
+    (s ?? '')
+      .normalize('NFKD')
+      .replace(/\p{M}/gu, '')
+      .toLowerCase()
+      .replace(/[^\p{L}\p{N}]+/gu, '');
   return `${norm(c.brand)}|${norm(c.name)}`;
 }
 
@@ -154,7 +158,8 @@ export function comparisonScopes(c: Candidate, categories: Taxonomy, generic: Se
  * Taking the top N by popularity alone would give a site where a popular
  * ultra-processed product often has nothing less processed to point to,
  * because the less-processed items in its category are less scanned. So:
- *   1. take the most popular (1 - balanceShare) * target products;
+ *   0. take up to `max` products of each quota market (most popular first);
+ *   1. top up with the most popular, to (1 - balanceShare) * target products;
  *   2. walk them in popularity order and, for each NOVA 2-4 product whose
  *      category has fewer than two less-processed products selected, pull
  *      the most popular less-processed ones from the pool (climbing to a
@@ -165,7 +170,7 @@ export function comparisonScopes(c: Candidate, categories: Taxonomy, generic: Se
 export function selectProducts(
   pool: Candidate[],
   categories: Taxonomy,
-  opts: Pick<BuildOptions, 'target' | 'balanceShare' | 'generic' | 'compare'>,
+  opts: Pick<BuildOptions, 'target' | 'quotas' | 'balanceShare' | 'generic' | 'compare'>,
 ): { selected: Candidate[]; balanced: number } {
   const WANT_LOWER = 2;
   const reserve = Math.round(opts.target * opts.balanceShare);
@@ -190,7 +195,17 @@ export function selectProducts(
     return n;
   };
 
-  for (const c of pool.slice(0, coreSize)) add(c);
+  for (const m of opts.quotas) {
+    let taken = 0;
+    for (const c of pool) {
+      if (taken >= m.max || selected.length >= coreSize) break;
+      if (inMarket(m, c) && !chosen.has(c.code)) (add(c), taken++);
+    }
+  }
+  for (const c of pool) {
+    if (selected.length >= coreSize) break;
+    if (!chosen.has(c.code)) add(c);
+  }
 
   const poolByCategory = new Map<string, Candidate[]>();
   for (const c of pool) {
@@ -202,7 +217,7 @@ export function selectProducts(
   }
 
   let balanced = 0;
-  outer: for (const p of selected.slice(0, coreSize)) {
+  outer: for (const p of [...selected].sort(opts.compare)) {
     if (balanced >= reserve) break;
     if (p.nova === 1) continue;
     for (const scope of comparisonScopes(p, categories, opts.generic)) {
@@ -309,11 +324,11 @@ export function splitAdditiveName(name: string): [string | null, string] {
 
 const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
-/** "PHILADELPHIA" -> "Philadelphia", "oreo" -> "Oreo"; mixed case is left alone. */
+/** "PHILADELPHIA" -> "Philadelphia", "oreo" -> "Oreo", "änglamark" -> "Änglamark"; mixed case is left alone. */
 export function tidyBrand(brand: string | null): string | null {
   if (!brand) return null;
   const t = tidyName(brand);
-  return /[A-Z]/.test(t) ? t : t.replace(/(^|[\s\-/(.&])([a-z])/g, (_, p: string, c: string) => p + c.toUpperCase());
+  return /\p{Lu}/u.test(t) ? t : t.replace(/(^|[\s\-/(.&])(\p{Ll})/gu, (_, p: string, c: string) => p + c.toUpperCase());
 }
 
 export function buildSite(selected: Candidate[], tax: Taxonomies, opts: BuildOptions): BuiltSite {
@@ -398,6 +413,38 @@ export function buildSite(selected: Candidate[], tax: Taxonomies, opts: BuildOpt
   for (const c of categories.values()) if (c.parent) categories.get(c.parent)!.children.push(c.tag);
   for (const c of categories.values()) c.children.sort((a, b) => categories.get(b)!.count - categories.get(a)!.count);
 
+  // Alternatives come from these lists: each page category's products, least
+  // processed then most popular first, overall and per market country (a
+  // Swedish shopper can't buy a British alternative). Positions serve the
+  // "related" window. Precomputed: with tens of thousands of products,
+  // filtering whole categories per product is quadratic.
+  const altOrder = (a: string, b: string) => byCode.get(a)!.nova - byCode.get(b)!.nova || rankIndex.get(a)! - rankIndex.get(b)!;
+  const marketsOf = (c: Candidate) => c.countries.filter((t) => opts.marketCountries.has(t));
+  const altLists = new Map<string, { all: string[]; byCountry: Map<string, string[]> }>();
+  const positions = new Map<string, Map<string, number>>();
+  for (const [tag, cat] of categories) {
+    const all = [...cat.codes].sort(altOrder);
+    const byCountry = new Map<string, string[]>();
+    for (const code of all) {
+      for (const t of marketsOf(byCode.get(code)!)) {
+        let list = byCountry.get(t);
+        if (!list) byCountry.set(t, (list = []));
+        list.push(code);
+      }
+    }
+    altLists.set(tag, { all, byCountry });
+    positions.set(tag, new Map(cat.codes.map((code, i) => [code, i])));
+  }
+  /** The head of an altOrder list: up to `max` codes less processed than `nova`. */
+  const lessProcessed = (codes: string[], nova: NovaGroup, max: number) => {
+    const out: string[] = [];
+    for (const code of codes) {
+      if (out.length >= max || byCode.get(code)!.nova >= nova) break;
+      out.push(code);
+    }
+    return out;
+  };
+
   const breadcrumbOf = (tag: string | null): string[] => {
     const chain: string[] = [];
     for (let t = tag; t && !chain.includes(t); t = categories.get(t)!.parent) chain.unshift(t);
@@ -424,18 +471,21 @@ export function buildSite(selected: Candidate[], tax: Taxonomies, opts: BuildOpt
 
     // Alternatives: less-processed products from the most specific category
     // (walking up the breadcrumb) that has at least two, else at least one.
+    // Within it, products sold in the same country come first. (Climbing
+    // further for local ones would trade like-for-like for buyable: cinnamon
+    // buns offered chocolate bars.)
     let alternatives: SiteProduct['alternatives'] = { category: null, codes: [] };
     if (c.nova > 1) {
-      const scopes = [...breadcrumb].reverse();
-      const options = scopes.map((tag) => ({
-        category: tag,
-        codes: categories
-          .get(tag)!
-          .codes.filter((code) => byCode.get(code)!.nova < c.nova)
-          .sort((a, b) => byCode.get(a)!.nova - byCode.get(b)!.nova || rankIndex.get(a)! - rankIndex.get(b)!)
-          .slice(0, opts.maxAlternatives),
-      }));
-      alternatives = options.find((o) => o.codes.length >= 2) ?? options.find((o) => o.codes.length >= 1) ?? alternatives;
+      const own = marketsOf(c);
+      const max = opts.maxAlternatives;
+      const options = [...breadcrumb].reverse().map((tag) => ({ tag, all: lessProcessed(altLists.get(tag)!.all, c.nova, max) }));
+      const pick = options.find((o) => o.all.length >= 2) ?? options.find((o) => o.all.length >= 1);
+      if (pick) {
+        const lists = altLists.get(pick.tag)!;
+        const local = [...new Set(own.flatMap((t) => lessProcessed(lists.byCountry.get(t) ?? [], c.nova, max)))].sort(altOrder);
+        const others = lessProcessed(lists.all, c.nova, max + local.length).filter((code) => !local.includes(code));
+        alternatives = { category: pick.tag, codes: [...local, ...others].slice(0, max) };
+      }
     }
 
     // Related: neighbours in the category's processing order, for internal links.
@@ -443,7 +493,7 @@ export function buildSite(selected: Candidate[], tax: Taxonomies, opts: BuildOpt
     let categoryRank: number | null = null;
     if (category) {
       const codes = categories.get(category)!.codes;
-      const i = codes.indexOf(c.code);
+      const i = positions.get(category)!.get(c.code)!;
       categoryRank = i + 1;
       const exclude = new Set([c.code, ...alternatives.codes]);
       const half = Math.ceil(opts.maxRelated / 2);
@@ -454,6 +504,7 @@ export function buildSite(selected: Candidate[], tax: Taxonomies, opts: BuildOpt
     return {
       code: c.code,
       slug: productSlug(c.name, c.brand, c.code),
+      lang: c.lang,
       name: c.name,
       brand: tidyBrand(c.brand),
       quantity: c.quantity,
@@ -484,7 +535,8 @@ export function buildSite(selected: Candidate[], tax: Taxonomies, opts: BuildOpt
       let entry = markerProducts.get(m.tag);
       if (!entry) markerProducts.set(m.tag, (entry = { group: m.group, type: m.type, codes: [] }));
       entry.group = Math.max(entry.group ?? 0, m.group) as NovaGroup;
-      if (!entry.codes.includes(c.code)) entry.codes.push(c.code);
+      // A product can list a tag twice (as group 3 and group 4); its markers are consecutive.
+      if (entry.codes[entry.codes.length - 1] !== c.code) entry.codes.push(c.code);
     }
   }
 

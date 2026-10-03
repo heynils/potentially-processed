@@ -4,7 +4,7 @@
 // phones. The name comes first in the markup, so screen readers announce it
 // before the badge; CSS puts the photo first visually.
 import type { SiteProduct } from '../../pipeline/lib/types.ts';
-import { productHref } from '../lib/data.ts';
+import { productHref, textLang } from '../lib/data.ts';
 import NovaBadge from './NovaBadge.astro';
 import ProductThumb from './ProductThumb.astro';
 
@@ -26,7 +26,7 @@ const Tag = ordered ? 'ol' : 'ul';
         <a class="row" href={productHref(p)}>
           {ordered && <span class="rank">{start + i}</span>}
           <span class="text">
-            <span class="name">{p.name}</span>
+            <span class="name" lang={textLang(p)}>{p.name}</span>
             {(p.brand || p.quantity) && <span class="sub">{[p.brand, p.quantity].filter(Boolean).join(' · ')}</span>}
           </span>
           <span class="pic">

@@ -19,10 +19,12 @@ import {
   categoryByTag,
   categoryHref,
   formatDate,
+  formatNumber,
   getProducts,
   href,
   imageAt,
   imageSrcset,
+  listJoin,
   lowerFirst,
   markerByTag,
   markerHref,
@@ -32,6 +34,10 @@ import {
   percent,
   products,
   productTitle,
+  servedCountries,
+  soldIn,
+  textLang,
+  withArticle,
 } from '../../lib/data.ts';
 import { describeMarker, firstSentence, groupByKind, KINDS } from '../../lib/explain.ts';
 import { NOVA } from '../../lib/nova.ts';
@@ -51,6 +57,18 @@ const altCategory = p.alternatives.category ? categoryByTag.get(p.alternatives.c
 const alternatives = getProducts(p.alternatives.codes);
 const related = getProducts(p.related);
 const image = SITE.showProductImages ? p.image : null;
+const list = listJoin;
+const lang = textLang(p);
+// "Sold in Sweden", "Sold in the United Kingdom, Ireland and 4 more countries"
+const countries = soldIn(p).map(withArticle);
+const soldInText =
+  countries.length === 0
+    ? null
+    : countries.length > 3
+      ? `Sold in ${countries.slice(0, 2).join(', ')} and ${countries.length - 2} more countries`
+      : `Sold in ${list(countries)}`;
+// Search filter values: the countries the site serves (see SearchBox).
+const filterCountries = servedCountries.filter((c) => p.countries.includes(c.tag));
 
 const uniqueByTag = (markers: Marker[]) => [...new Map(markers.map((m) => [m.tag, m])).values()];
 // Markers that decide the group, and weaker ones shown for completeness.
@@ -72,8 +90,6 @@ const markerLink = (m: Marker) => {
 // "Flavouring" -> "flavouring", "E160c Paprika extract" -> "E160c paprika extract" (mid-sentence)
 const lowerName = (s: string) =>
   /^E\d/.test(s) ? s.replace(/^(\S+ )(\S)/, (_, code: string, c: string) => code + c.toLowerCase()) : lowerFirst(s);
-const list = (items: string[]) =>
-  items.length <= 1 ? (items[0] ?? '') : `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`;
 const plural = (n: number, word: string) => `${n === 0 ? 'No' : n} ${word}${n === 1 ? '' : 's'}`;
 
 const answer: Record<NovaGroup, string> = {
@@ -103,7 +119,7 @@ const description = (
 const breadcrumbItems = [
   { name: 'Home', href: href() },
   ...p.breadcrumb.map((t) => ({ name: categoryByTag.get(t)!.name, href: categoryHref(categoryByTag.get(t)!) })),
-  { name: p.name },
+  { name: p.name, lang },
 ];
 
 const jsonLd = [
@@ -133,14 +149,16 @@ const hero = image ? imageAt(image, 200) : null;
     {p.brand && <span hidden data-pagefind-ignore data-pagefind-meta="brand">{p.brand}</span>}
     {/* Explicit, or Pagefind would take the first photo on the page, which can be an alternative's. */}
     <span hidden data-pagefind-ignore data-pagefind-meta="image[data-src]" data-src={image ? imageAt(image, 100).url : 'none'} />
+    {filterCountries.map((c) => <span hidden data-pagefind-ignore data-pagefind-filter="country">{c.name}</span>)}
 
     <header class="product-head">
       <h1>
-        Is <span data-pagefind-meta="title">{title}</span> ultra-processed?
+        Is <span data-pagefind-meta="title" lang={lang}>{title}</span> ultra-processed?
       </h1>
       <p class="product-meta">
         {p.quantity && <span>{p.quantity}</span>}
         {category && <a href={categoryHref(category)}>{category.name}</a>}
+        {soldInText && <span data-pagefind-ignore>{soldInText}</span>}
       </p>
       {
         hero && image && (
@@ -218,7 +236,7 @@ const hero = image ? imageAt(image, 200) : null;
           </p>
         )
       }
-      <p class="ingredient-list">
+      <p class="ingredient-list" lang={lang}>
         <IngredientList items={p.ingredients} />
       </p>
       {
@@ -247,7 +265,7 @@ const hero = image ? imageAt(image, 200) : null;
       }
       <details data-pagefind-ignore>
         <summary>As written on the pack</summary>
-        <p>{p.ingredientsText}</p>
+        <p lang={lang}>{p.ingredientsText}</p>
       </details>
     </section>
 
@@ -311,13 +329,13 @@ const hero = image ? imageAt(image, 200) : null;
       category && (
         <section aria-labelledby="compare" data-pagefind-ignore>
           <h2 id="compare">
-            Among {category.count} {lowerFirst(category.name)}
+            Among {formatNumber(category.count)} {lowerFirst(category.name)}
           </h2>
           <p>
             From least to most processed, this one ranks <strong>{ordinal(p.categoryRank!)}</strong>.{' '}
             {percent(category.novaCounts[4], category.count)}% of the {lowerFirst(category.name)} here are ultra-processed.
           </p>
-          <NovaBar counts={category.novaCounts} current={p.nova} />
+          <NovaBar counts={category.novaCounts} current={p.nova} legend={false} />
           <p class="meta">
             Ranked by NOVA group, then by the number of ultra-processing signs, additives and ingredients. Our ordering, not
             part of NOVA.
@@ -325,7 +343,7 @@ const hero = image ? imageAt(image, 200) : null;
           {related.length > 0 && <ProductList products={related} />}
           <p>
             <a href={categoryHref(category)}>
-              All {category.count} {lowerFirst(category.name)}, least processed first
+              All {formatNumber(category.count)} {lowerFirst(category.name)}, least processed first
             </a>
           </p>
         </section>

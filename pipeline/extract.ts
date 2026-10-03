@@ -1,5 +1,7 @@
 // Stage 1: stream the Open Food Facts JSONL export and keep the POOL_SIZE
-// most popular products that pass the eligibility filters.
+// best products that pass the eligibility filters: every product of a quota
+// market (MARKET_QUOTAS), then the most popular of the rest, products sold in
+// a PRIORITY_COUNTRIES market first (the order the select stage uses).
 //
 //   curl -sSfL "$EXPORT_URL" | node pipeline/extract.ts --input -
 //   node pipeline/extract.ts --input pipeline/fixtures/sample.jsonl
@@ -10,8 +12,9 @@
 
 import { mkdir, writeFile } from 'node:fs/promises';
 import { parseArgs } from 'node:util';
-import { POOL_SIZE, WORK_DIR } from './config.ts';
-import { compareRank, normalize } from './lib/normalize.ts';
+import { LANGUAGES, MARKET_QUOTAS, POOL_SIZE, PRIORITY_COUNTRIES, WORK_DIR } from './config.ts';
+import { inMarket, marketFirst, poolReject, quotaFirst } from './lib/markets.ts';
+import { normalize } from './lib/normalize.ts';
 import { openInput, splitLines } from './lib/stream.ts';
 import { TopK } from './lib/top-k.ts';
 import type { Candidate } from './lib/types.ts';
@@ -32,13 +35,15 @@ const { values: args } = parseArgs({
 // same reason, so the funnel counts stay identical; we just skip JSON.parse
 // for the ~80% of lines that cannot qualify.
 const HAS_NOVA = Buffer.from('"nova_group":');
-const HAS_LANG_EN = Buffer.from('"lang":"en"');
+// normalize() takes the language from ingredients_lc, else lang.
+const HAS_LANGUAGE = [...LANGUAGES].flatMap((l) => [Buffer.from(`"ingredients_lc":"${l}"`), Buffer.from(`"lang":"${l}"`)]);
 
-const pool = new TopK<Candidate>(Number(args.pool), compareRank);
+const pool = new TopK<Candidate>(Number(args.pool), quotaFirst(MARKET_QUOTAS, marketFirst(PRIORITY_COUNTRIES)));
 const rejected: Record<string, number> = {};
 let linesRead = 0;
 let parseErrors = 0;
 let eligible = 0;
+const eligibleByMarket: Record<string, number> = Object.fromEntries(MARKET_QUOTAS.map((m) => [m.name, 0]));
 const started = Date.now();
 
 const reject = (reason: string) => {
@@ -57,8 +62,8 @@ for await (const line of splitLines(await openInput(args.input))) {
     reject('no-nova-group');
     continue;
   }
-  if (line.indexOf(HAS_LANG_EN) === -1) {
-    reject('not-english');
+  if (!HAS_LANGUAGE.some((pattern) => line.indexOf(pattern) !== -1)) {
+    reject('other-language');
     continue;
   }
 
@@ -70,12 +75,18 @@ for await (const line of splitLines(await openInput(args.input))) {
     continue;
   }
 
-  const result = normalize(raw);
+  const result = normalize(raw, LANGUAGES);
   if (!result.ok) {
     reject(result.reason);
     continue;
   }
+  const notWanted = poolReject(result.candidate, MARKET_QUOTAS);
+  if (notWanted) {
+    reject(notWanted);
+    continue;
+  }
   eligible++;
+  for (const m of MARKET_QUOTAS) if (inMarket(m, result.candidate)) eligibleByMarket[m.name]++;
   pool.push(result.candidate);
 }
 
@@ -88,7 +99,7 @@ if (linesRead < minLines) {
 const candidates = pool.sorted();
 await mkdir(args.out, { recursive: true });
 await writeFile(`${args.out}/candidates.jsonl`, candidates.map((c) => JSON.stringify(c)).join('\n') + '\n');
-const stats = { input: args.input, linesRead, parseErrors, rejected, eligible, pooled: candidates.length };
+const stats = { input: args.input, linesRead, parseErrors, rejected, eligible, eligibleByMarket, pooled: candidates.length };
 await writeFile(`${args.out}/extract-stats.json`, JSON.stringify(stats, null, 2) + '\n');
 
 console.error(`Done in ${((Date.now() - started) / 1000).toFixed(0)}s`);

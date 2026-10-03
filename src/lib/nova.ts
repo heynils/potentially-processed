@@ -6,7 +6,7 @@ export interface NovaInfo {
   short: string;
   /** Label under the step on the visual scale. */
   label: string;
-  /** Lucide icon name for the group, see components/Icon.astro. */
+  /** Lucide icon name for the group, see lib/icons.ts. */
   icon: 'apple' | 'chef-hat' | 'can' | 'factory';
   /** One plain-language line with familiar examples, for the scale and home page. */
   summary: string;
