@@ -39,9 +39,7 @@ properties, `.ts` extensions in imports.
 - `src/` Astro site; reads `data/site/` at build time via `src/lib/data.ts`
   - `src/lib/explain.ts` curated marker descriptions and "kinds" (editorial content)
   - `src/lib/nova.ts` NOVA group definitions (Monteiro et al. 2019)
-- `.github/workflows/deploy.yml` weekly data refresh + build, then direct-upload `dist/` to
-  Cloudflare Pages (needs secrets `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`)
-- `public/_headers` Cloudflare cache + noindex-on-pages.dev rules
+- `.github/workflows/deploy.yml` weekly data refresh + build + deploy to Pages
 - `data/` is gitignored: never commit the OFF dump or generated data
 
 ## Decisions (made with Nils; don't relitigate without asking)
@@ -49,9 +47,8 @@ properties, `.ts` extensions in imports.
 - English only for v1. ~5,000 products with complete data, not the whole DB.
 - Astro (static output), Pagefind for search, `@astrojs/sitemap`.
 - Data: OFF bulk JSONL export, never the live API (no full-text search, rate
-  limits). Hosting: Cloudflare Pages (moved from GitHub Pages; chosen for analytics
-  and because ad-supported sites are allowed). Built in Actions, uploaded via
-  wrangler, not built by Cloudflare. Domain: ultraornot.com.
+  limits). Hosting: GitHub Pages via custom Actions workflow. Cloudflare Pages
+  later is only a DNS change.
 - Design: basic and clean. Archivo Variable (self-hosted, uses the width axis).
   Avoid the generic generated look: no cream + terracotta, no near-black + acid
   green, no identical rounded cards with soft shadows, no all-caps eyebrow
@@ -97,7 +94,7 @@ properties, `.ts` extensions in imports.
 
 ## Open items (Nils only)
 
-Cloudflare setup (API token + account ID as GitHub secrets, custom domain,
-Web Analytics; see README "Deployment"); Search Console; apply for AdSense
-once there's real traffic, then set the `ADSENSE_CLIENT` and `AD_SLOT_*`
-repository variables.
+Create/confirm repo settings: Pages source = "GitHub Actions"; buy a domain
+(none chosen yet) and set it under Settings -> Pages; Search Console; apply
+for AdSense once there's real traffic, then set the `ADSENSE_CLIENT` and
+`AD_SLOT_*` repository variables.
