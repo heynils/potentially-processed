@@ -45,7 +45,7 @@ data/work/candidates.jsonl (60k most popular eligible products)
 data/site/*.json (5,000 products, ~430 categories, ~115 markers)
         │  astro build + pagefind          npm run build         ~20 s
         ▼
-dist/ (static HTML + search index) → GitHub Pages
+dist/ (static HTML + search index) → Cloudflare Pages
 ```
 
 ## The data pipeline
@@ -233,6 +233,11 @@ descriptions, and `src/lib/nova.ts`, which holds the group definitions.
 
 ## Deployment
 
+The site is hosted on **Cloudflare Pages**, but it is *built* here, in GitHub
+Actions. The build streams a 13 GB export and relies on the Actions cache,
+which Cloudflare's 20-minute build environment can't do. Cloudflare only
+receives the finished `dist/` folder, a method it calls *direct upload*.
+
 `.github/workflows/deploy.yml` runs on every push to `main`, weekly on
 Mondays, and on demand.
 
@@ -240,32 +245,52 @@ Mondays, and on demand.
   code changes, or when you tick *refresh data* on a manual run. Its output,
   about 125 MB, is stored in the Actions cache. Every other run restores it
   and goes straight to the select stage and the build.
-- The base URL comes from `actions/configure-pages`, so the same build works
-  at `https://<user>.github.io/<repo>/` and later on a custom domain at `/`.
-- Before selecting products, it reads the live site's sitemap (see
+- A push to `main` deploys to production. A manual run on any other branch
+  deploys a **preview** at `<branch>.<project>.pages.dev`, which is a safe
+  way to try a change with the real data before merging.
+- The site address comes from the `SITE_URL` repository variable (default
+  `https://ultraornot.com`), so moving to another domain needs no code change.
+- Before selecting products, the build reads the live site's sitemap (see
   [Keeping URLs stable](#keeping-urls-stable)). If the site can't be
   reached, as on a first deploy, the build simply starts fresh.
+- `public/_headers` gives hashed assets a one-year cache and marks the
+  `*.pages.dev` addresses `noindex`, so Google doesn't index the same pages
+  on two hosts.
 
-One-time setup, which only the repository owner can do:
+One-time setup, which only the account owner can do:
 
-1. In **Settings → Pages**, set the source to **GitHub Actions**.
-2. Push to `main`, or run the workflow manually. The first run downloads the
-   export.
-3. Once a domain is bought, add it in **Settings → Pages → Custom domain** and
-   point DNS at GitHub. No code change is needed. AdSense won't accept a
-   `github.io` address.
-4. Add the site to Google Search Console and submit `sitemap-index.xml`.
-5. After AdSense approval, add the repository *variables* `ADSENSE_CLIENT`
+1. **API token.** In Cloudflare, go to **My Profile → API Tokens → Create
+   Token → Create Custom Token**, with the permission *Account → Cloudflare
+   Pages → Edit*. Copy the token.
+2. **Account ID.** It's shown in the right-hand sidebar of **Workers & Pages**
+   in the dashboard.
+3. **GitHub secrets.** In **Settings → Secrets and variables → Actions**, add
+   the secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`.
+4. **First deploy.** Push to `main` or run the workflow. It creates the Pages
+   project (named `ultraornot` unless you set the `CLOUDFLARE_PROJECT`
+   variable) and deploys to `https://ultraornot.pages.dev`.
+5. **Custom domain.** If the domain's DNS is on Cloudflare: delete any old
+   `A` or `CNAME` records for the bare domain and for `www`, then in the Pages
+   project open **Custom domains → Set up a custom domain** and add both the
+   bare domain and `www`. Cloudflare creates the records and the HTTPS
+   certificate itself. Then add a *Redirect Rule* (**Rules → Redirect Rules**,
+   template "Redirect from WWW to root") so there is one canonical address.
+6. **Analytics.** In the Pages project, open **Metrics** and enable *Web
+   Analytics*. It is free and cookieless, so it needs no consent banner. The
+   domain's own **Analytics & Logs** page also shows traffic measured at
+   Cloudflare's edge, which includes visitors who block scripts.
+7. Add the site to Google Search Console and submit `sitemap-index.xml`.
+8. After AdSense approval, add the repository *variables* `ADSENSE_CLIENT`
    and `AD_SLOT_PRODUCT_TOP` (plus the other `AD_SLOT_*` ones in the
    workflow). Ad units appear only where both a client id and a slot id are
    set. Also add `public/ads.txt` with the line AdSense gives you.
 
-Limits worth knowing about GitHub Pages: sites can be up to 1 GB (this one is
-about 100 MB), a deployment times out after 10 minutes, and there is a soft
-bandwidth limit of 100 GB a month. The free plan needs a public repository.
-GitHub's terms say Pages isn't meant as free hosting for a commercial
-business. An ad-supported information site is a grey area, and moving to
-Cloudflare Pages is a DNS change.
+Limits worth knowing: the free plan allows 20,000 files per Pages site (this
+one has about 11,300, since each page adds an HTML file and a search
+fragment, so it fits up to roughly 9,000 products) and 25 MiB per file. Check
+Cloudflare's current limits page before growing the site. Unlike GitHub
+Pages, Cloudflare allows commercial and ad-supported sites, and the repository
+can be private.
 
 ## Licensing and attribution
 
